@@ -64,7 +64,11 @@ export class GatewayService {
       where: {
         userId: principal.userId,
         active: true,
-        publishedModel: { active: true, provider: { active: true } },
+        publishedModel: {
+          active: true,
+          deletedAt: null,
+          provider: { active: true, deletedAt: null },
+        },
       },
       include: { publishedModel: true },
       orderBy: { alias: 'asc' },
@@ -393,7 +397,13 @@ export class GatewayService {
       where: { userId_alias: { userId, alias } },
       include: { publishedModel: { include: { provider: true } } },
     });
-    if (!grant?.active || !grant.publishedModel.active || !grant.publishedModel.provider.active) {
+    if (
+      !grant?.active ||
+      !grant.publishedModel.active ||
+      grant.publishedModel.deletedAt ||
+      !grant.publishedModel.provider.active ||
+      grant.publishedModel.provider.deletedAt
+    ) {
       throw new AppError('model_not_found', 404);
     }
     return { grant, model: grant.publishedModel, provider: grant.publishedModel.provider, alias };

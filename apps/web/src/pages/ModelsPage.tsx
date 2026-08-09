@@ -1,5 +1,6 @@
 import {
   CheckOutlined,
+  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   RadarChartOutlined,
@@ -39,6 +40,12 @@ import { EnabledBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatDateTime, formatUsd } from '@/lib/format';
 import { modelAliasPattern } from '@/lib/modelAlias';
+import {
+  modelDeletionNotice,
+  promptModePresentation,
+  selectableThinkingLevels,
+  type DeleteModelResult,
+} from '@/lib/modelForm';
 import type {
   DiscoveredModel,
   DiscoveredModelCapabilities,
@@ -133,6 +140,7 @@ export function ModelsPage() {
   const [selectedCandidateRows, setSelectedCandidateRows] = useState<DiscoveredModel[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [deletingId, setDeletingId] = useState<string>();
   const providers = useApiResource(
     (signal) =>
       apiClient
@@ -228,6 +236,32 @@ export function ModelsPage() {
     }
   };
 
+  const deleteModel = async (model: PublishedModel) => {
+    setDeletingId(model.id);
+    try {
+      const result = await apiClient.delete<DeleteModelResult>(endpoints.publishedModel(model.id));
+      message.success(
+        modelDeletionNotice(result) === 'HISTORY_PRESERVED'
+          ? tr(
+              '模型因已有使用歷史而封存，已從模型目錄隱藏；歷史統計仍會保留。',
+              'The model had usage history, so it was archived and hidden while its history was preserved.',
+            )
+          : tr('模型已永久刪除', 'Model permanently deleted'),
+      );
+      if (editing?.id === model.id) {
+        setEditing(undefined);
+        setDrawerOpen(false);
+      }
+      publishedRef.current?.reload();
+      candidatesRef.current?.reload();
+      discoveredModels.refresh();
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setDeletingId(undefined);
+    }
+  };
+
   const publishedColumns: ProColumns<PublishedModel>[] = [
     {
       title: tr('公開名稱', 'Public name'),
@@ -257,11 +291,16 @@ export function ModelsPage() {
       render: (_, row) => <CapabilityTags capabilities={row.capabilities} />,
     },
     {
-      title: tr('提示詞', 'Prompt mode'),
+      title: tr('系統提示詞模式', 'System prompt mode'),
       dataIndex: 'promptMode',
       valueType: 'select',
-      valueEnum: Object.fromEntries(promptModes.map((mode) => [mode, mode])),
-      width: 120,
+      valueEnum: Object.fromEntries(
+        promptModes.map((mode) => [
+          mode,
+          tr(promptModePresentation[mode].labelZh, promptModePresentation[mode].labelEn),
+        ]),
+      ),
+      width: 145,
     },
     {
       title: 'Thinking',
@@ -313,7 +352,7 @@ export function ModelsPage() {
       title: tr('操作', 'Actions'),
       valueType: 'option',
       fixed: 'right',
-      width: 170,
+      width: 245,
       render: (_, row) => [
         <Button
           key="edit"
@@ -338,6 +377,28 @@ export function ModelsPage() {
         >
           <Button type="link" size="small" danger={row.enabled}>
             {row.enabled ? tr('停用', 'Disable') : tr('啟用', 'Enable')}
+          </Button>
+        </Popconfirm>,
+        <Popconfirm
+          key="delete"
+          title={tr('刪除這個模型？', 'Delete this model?')}
+          description={tr(
+            '模型會立即從目錄及客戶端隱藏。若已有使用歷史，系統將改為封存並保留統計資料。',
+            'The model will immediately be hidden from the catalog and customers. Models with usage history are archived so statistics remain intact.',
+          )}
+          okText={tr('刪除', 'Delete')}
+          cancelText={tr('取消', 'Cancel')}
+          okButtonProps={{ danger: true, loading: deletingId === row.id }}
+          onConfirm={() => deleteModel(row)}
+        >
+          <Button
+            type="link"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            loading={deletingId === row.id}
+          >
+            {tr('刪除', 'Delete')}
           </Button>
         </Popconfirm>,
       ],
@@ -703,8 +764,29 @@ export function ModelsPage() {
         </ProFormDependency>
         <ProFormSelect
           name="promptMode"
-          label="System prompt mode"
-          options={promptModes.map((value) => ({ label: value, value }))}
+          label={tr('系統提示詞模式', 'System prompt mode')}
+          options={promptModes.map((value) => ({
+            label: tr(
+              `${promptModePresentation[value].labelZh}（${value}）`,
+              `${promptModePresentation[value].labelEn} (${value})`,
+            ),
+            value,
+          }))}
+          tooltip={
+            <Space direction="vertical" size={4}>
+              {promptModes.map((mode) => (
+                <span key={mode}>
+                  <Typography.Text strong style={{ color: 'inherit' }}>
+                    {tr(promptModePresentation[mode].labelZh, promptModePresentation[mode].labelEn)}
+                  </Typography.Text>
+                  {tr(
+                    `：${promptModePresentation[mode].descriptionZh}`,
+                    `: ${promptModePresentation[mode].descriptionEn}`,
+                  )}
+                </span>
+              ))}
+            </Space>
+          }
           rules={[{ required: true }]}
         />
         <ProFormDependency name={['promptMode']}>
@@ -712,7 +794,7 @@ export function ModelsPage() {
             promptMode !== 'NONE' ? (
               <ProFormTextArea
                 name="systemPrompt"
-                label="System prompt"
+                label={tr('系統提示詞', 'System prompt')}
                 fieldProps={{ rows: 6, maxLength: 16_000, showCount: true }}
                 rules={[{ required: true }]}
               />
@@ -728,12 +810,13 @@ export function ModelsPage() {
             );
             const confirmed = new Set(discovered?.metadata.supportedThinkingLevels ?? []);
             const hasConfirmedLevels = confirmed.size > 0;
+            const selectableLevels = selectableThinkingLevels([...confirmed]);
             return (
               <>
                 <ProFormSelect
                   name="thinkingLevel"
                   label={tr('伺服器 Thinking 強度', 'Server-controlled thinking')}
-                  options={thinkingLevels.map((value) => ({
+                  options={selectableLevels.map((value) => ({
                     value,
                     label:
                       value === 'PROVIDER_DEFAULT'

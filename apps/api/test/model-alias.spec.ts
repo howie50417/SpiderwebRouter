@@ -14,10 +14,26 @@ function createHarness() {
   const publishedModelCreate = vi.fn().mockResolvedValue({ id: 'published-model-id' });
   const grantUpsert = vi.fn().mockResolvedValue({ id: 'grant-id' });
   const prisma = {
-    publishedModel: { create: publishedModelCreate },
+    providerConnection: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: '22222222-2222-4222-8222-222222222222',
+        deletedAt: null,
+      }),
+    },
+    publishedModel: {
+      create: publishedModelCreate,
+      findFirst: vi.fn().mockResolvedValue({
+        id: '44444444-4444-4444-8444-444444444444',
+        deletedAt: null,
+      }),
+    },
     userModelGrant: { upsert: grantUpsert },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
+    $transaction: vi.fn(),
   };
+  prisma.$transaction.mockImplementation(async (work: (tx: typeof prisma) => Promise<unknown>) =>
+    work(prisma),
+  );
   const service = new AdminService(
     prisma as never,
     {} as never,
@@ -28,12 +44,12 @@ function createHarness() {
     {} as never,
   );
 
-  return { service, publishedModelCreate, grantUpsert };
+  return { service, prisma, publishedModelCreate, grantUpsert };
 }
 
 describe('model alias validation', () => {
   it('accepts a slash in a global public model alias', async () => {
-    const { service, publishedModelCreate } = createHarness();
+    const { service, prisma, publishedModelCreate } = createHarness();
     const alias = 'unsloth/DeepSeek-V4-Flash-0731-GGUF';
 
     await service.createModel(
@@ -48,6 +64,9 @@ describe('model alias validation', () => {
 
     expect(publishedModelCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ defaultAlias: alias }),
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable',
     });
   });
 

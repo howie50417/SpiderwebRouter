@@ -28,6 +28,7 @@ function provider(type: ProviderConnection['type'] = 'GENERIC_OPENAI'): Provider
     lastHealthCheckAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
+    deletedAt: null,
   };
 }
 

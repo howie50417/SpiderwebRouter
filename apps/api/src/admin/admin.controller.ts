@@ -60,12 +60,12 @@ export class AdminController {
   }
 
   @Delete('providers/:id')
-  disableProvider(
+  deleteProvider(
     @Param('id') id: string,
     @CurrentPrincipal() actor: AuthenticatedPrincipal,
     @Req() req: FastifyRequest,
   ) {
-    return this.admin.disableProvider(id, actor, req.id);
+    return this.admin.deleteProvider(id, actor, req.id);
   }
 
   @Post('providers/:id/test')
@@ -146,6 +146,24 @@ export class AdminController {
     @Req() req: FastifyRequest,
   ) {
     return this.admin.updateModel(id, body, actor, req.id);
+  }
+
+  @Delete('models/:id')
+  deleteModel(
+    @Param('id') id: string,
+    @CurrentPrincipal() actor: AuthenticatedPrincipal,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.admin.deleteModel(id, actor, req.id);
+  }
+
+  @Delete('published-models/:id')
+  deletePublishedModel(
+    @Param('id') id: string,
+    @CurrentPrincipal() actor: AuthenticatedPrincipal,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.admin.deleteModel(id, actor, req.id);
   }
 
   @Get('users')

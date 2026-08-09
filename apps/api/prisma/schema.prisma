@@ -132,12 +132,14 @@ model ProviderConnection {
   lastHealthCheckAt DateTime?         @map("last_health_check_at")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
   discoveredModels  DiscoveredModel[]
   scanJobs          ScanJob[]
   publishedModels   PublishedModel[]
   attempts          ProviderAttempt[]
 
   @@index([type, active])
+  @@index([deletedAt])
   @@map("provider_connections")
   @@schema("app")
 }
@@ -192,6 +194,7 @@ model PublishedModel {
   outputPricePerM   Decimal            @default(0) @map("output_price_per_m") @db.Decimal(20, 8)
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
+  deletedAt         DateTime?          @map("deleted_at")
   provider          ProviderConnection @relation(fields: [providerId], references: [id], onDelete: Restrict)
   grants            UserModelGrant[]
   inferenceRequests InferenceRequest[]
@@ -199,6 +202,7 @@ model PublishedModel {
 
   @@index([providerId, upstreamModelId])
   @@index([active])
+  @@index([deletedAt])
   @@map("published_models")
   @@schema("app")
 }
@@ -318,7 +322,7 @@ model UsageDailyRollup {
   costUsd          Decimal        @default(0) @map("cost_usd") @db.Decimal(30, 12)
   user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   apiKey           ApiKey?        @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
-  publishedModel   PublishedModel @relation(fields: [publishedModelId], references: [id], onDelete: Cascade)
+  publishedModel   PublishedModel @relation(fields: [publishedModelId], references: [id], onDelete: Restrict)
 
   @@unique([usageDate, userId, apiKeyId, publishedModelId])
   @@index([usageDate, userId])

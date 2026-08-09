@@ -1,5 +1,6 @@
 import {
   CheckCircleOutlined,
+  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   RadarChartOutlined,
@@ -40,6 +41,14 @@ interface ProviderFormValues {
   secret?: string;
   timeoutMs: number;
   enabled: boolean;
+}
+
+interface DeleteProviderResult {
+  id: string;
+  deleted: boolean;
+  hidden: boolean;
+  mode: 'HARD_DELETE' | 'ARCHIVED';
+  reason: 'HISTORY_PRESERVED' | null;
 }
 
 export function ProvidersPage() {
@@ -90,6 +99,26 @@ export function ProvidersPage() {
         }
       }
       message.success(tr('模型掃描已排入工作佇列', 'Model scan has been queued'));
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setBusyId(undefined);
+    }
+  };
+
+  const deleteProvider = async (provider: ProviderRecord) => {
+    setBusyId(`delete:${provider.id}`);
+    try {
+      const result = await apiClient.delete<DeleteProviderResult>(endpoints.provider(provider.id));
+      message.success(
+        result.mode === 'HARD_DELETE'
+          ? tr('服務來源已永久刪除', 'Provider permanently deleted')
+          : tr(
+              '此來源已有使用或轉接嘗試紀錄，已安全封存並從列表隱藏。',
+              'This provider has usage or provider-attempt history, so it was safely archived and hidden.',
+            ),
+      );
+      actionRef.current?.reload();
     } catch (error) {
       notifyError(error);
     } finally {
@@ -159,7 +188,7 @@ export function ProvidersPage() {
       title: tr('操作', 'Actions'),
       valueType: 'option',
       fixed: 'right',
-      width: 220,
+      width: 290,
       render: (_, row) => [
         <Tooltip key="test" title={tr('不保存任何模型輸出', 'No model output is retained')}>
           <Button
@@ -194,6 +223,28 @@ export function ProvidersPage() {
         >
           {tr('編輯', 'Edit')}
         </Button>,
+        <Popconfirm
+          key="delete"
+          title={tr('刪除此服務來源？', 'Delete this provider?')}
+          description={tr(
+            '尚未產生歷史的模型會一併刪除；若已有使用或轉接嘗試紀錄，系統會改為封存並保留統計。',
+            'Models without history are deleted with the provider. If usage or provider-attempt history exists, the provider is archived and statistics are preserved.',
+          )}
+          okText={tr('刪除', 'Delete')}
+          cancelText={tr('取消', 'Cancel')}
+          okButtonProps={{ danger: true, loading: busyId === `delete:${row.id}` }}
+          onConfirm={() => deleteProvider(row)}
+        >
+          <Button
+            danger
+            type="link"
+            size="small"
+            icon={<DeleteOutlined />}
+            loading={busyId === `delete:${row.id}`}
+          >
+            {tr('刪除', 'Delete')}
+          </Button>
+        </Popconfirm>,
       ],
     },
   ];

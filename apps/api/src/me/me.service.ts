@@ -40,7 +40,11 @@ export class MeService {
         where: {
           userId: principal.userId,
           active: true,
-          publishedModel: { active: true, provider: { active: true } },
+          publishedModel: {
+            active: true,
+            deletedAt: null,
+            provider: { active: true, deletedAt: null },
+          },
         },
         select: {
           id: true,

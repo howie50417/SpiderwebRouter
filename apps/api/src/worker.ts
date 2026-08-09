@@ -54,12 +54,14 @@ async function startWorker(): Promise<void> {
     if (stopping || healthRunning) return;
     healthRunning = true;
     try {
-      const providers = await prisma.providerConnection.findMany({ where: { active: true } });
+      const providers = await prisma.providerConnection.findMany({
+        where: { active: true, deletedAt: null },
+      });
       for (const provider of providers) {
         try {
           await adapters.scan(provider);
-          await prisma.providerConnection.update({
-            where: { id: provider.id },
+          await prisma.providerConnection.updateMany({
+            where: { id: provider.id, active: true, deletedAt: null },
             data: { healthStatus: 'HEALTHY', lastHealthCheckAt: new Date() },
           });
         } catch (error) {
@@ -67,8 +69,8 @@ async function startWorker(): Promise<void> {
             { provider_id: provider.id, provider_name: provider.name, err: error },
             'provider_health_check_failed',
           );
-          await prisma.providerConnection.update({
-            where: { id: provider.id },
+          await prisma.providerConnection.updateMany({
+            where: { id: provider.id, active: true, deletedAt: null },
             data: { healthStatus: 'UNHEALTHY', lastHealthCheckAt: new Date() },
           });
         }

@@ -19,6 +19,7 @@ function model(overrides: Partial<PublishedModel> = {}): PublishedModel {
     outputPricePerM: {} as PublishedModel['outputPricePerM'],
     createdAt: new Date(0),
     updatedAt: new Date(0),
+    deletedAt: null,
     ...overrides,
   };
 }

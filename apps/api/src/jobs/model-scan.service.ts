@@ -18,6 +18,17 @@ export class ModelScanService {
       include: { provider: true },
     });
     if (!job) throw new Error('Scan job not found');
+    if (job.provider.deletedAt || !job.provider.active) {
+      await this.prisma.scanJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'FAILED',
+          safeErrorCode: 'invalid_request_error',
+          finishedAt: new Date(),
+        },
+      });
+      throw new Error('The provider became unavailable before its scan started');
+    }
     const startedAt = Date.now();
     await this.prisma.scanJob.update({
       where: { id: job.id },
@@ -27,6 +38,12 @@ export class ModelScanService {
       const models = await this.adapters.scan(job.provider);
       const now = new Date();
       await this.prisma.$transaction(async (tx) => {
+        const provider = await tx.providerConnection.findFirst({
+          where: { id: job.providerId, active: true, deletedAt: null },
+          select: { id: true },
+        });
+        if (!provider)
+          throw new Error('The provider became unavailable while its scan was running');
         await tx.discoveredModel.updateMany({
           where: { providerId: job.providerId },
           data: { available: false },
@@ -62,7 +79,7 @@ export class ModelScanService {
           data: { status: 'SUCCEEDED', discoveredCount: models.length, finishedAt: now },
         });
         await tx.providerConnection.update({
-          where: { id: job.providerId },
+          where: { id: job.providerId, active: true, deletedAt: null },
           data: { healthStatus: 'HEALTHY', lastHealthCheckAt: now },
         });
       });
@@ -84,8 +101,8 @@ export class ModelScanService {
           where: { id: job.id },
           data: { status: 'FAILED', safeErrorCode: 'provider_unavailable', finishedAt: new Date() },
         }),
-        this.prisma.providerConnection.update({
-          where: { id: job.providerId },
+        this.prisma.providerConnection.updateMany({
+          where: { id: job.providerId, active: true, deletedAt: null },
           data: { healthStatus: 'UNHEALTHY', lastHealthCheckAt: new Date() },
         }),
       ]);
