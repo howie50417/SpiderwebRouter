@@ -413,6 +413,13 @@ export function normalizeApiPayload(path: string, payload: unknown): unknown {
   if (path.startsWith('/admin/models')) {
     return mapCollection(payload, normalizePublishedModel);
   }
+  if (path.startsWith('/admin/users/') && path.includes('/grants/batch')) {
+    const source = record(payload);
+    return {
+      ...source,
+      grants: Array.isArray(source.grants) ? source.grants.map(normalizeGrant) : [],
+    };
+  }
   if (path.startsWith('/admin/users')) {
     return mapCollection(payload, normalizeUser);
   }
@@ -453,6 +460,9 @@ export function normalizeRequestPayload(path: string, payload: unknown): unknown
       inputPricePerM: inputPriceUsdPerMillion ?? source.inputPricePerM,
       outputPricePerM: outputPriceUsdPerMillion ?? source.outputPricePerM,
     };
+  }
+  if (path.startsWith('/admin/users/') && path.includes('/grants/batch')) {
+    return source;
   }
   if (path.startsWith('/admin/users')) {
     const { enabled, ...rest } = source;

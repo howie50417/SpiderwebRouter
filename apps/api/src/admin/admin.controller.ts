@@ -220,6 +220,16 @@ export class AdminController {
     return this.admin.upsertGrant({ ...body, userId: id, publishedModelId }, actor, req.id);
   }
 
+  @Post('users/:id/grants/batch')
+  createUserGrantsBatch(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentPrincipal() actor: AuthenticatedPrincipal,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.admin.createGrantsBatch(id, body, actor, req.id);
+  }
+
   @Delete('grants/:id')
   deleteGrant(
     @Param('id') id: string,

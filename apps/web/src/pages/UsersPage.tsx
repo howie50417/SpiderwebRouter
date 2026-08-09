@@ -1,4 +1,5 @@
 import {
+  AppstoreAddOutlined,
   EditOutlined,
   KeyOutlined,
   PlusOutlined,
@@ -17,7 +18,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, App, Button, Drawer, Modal, Popconfirm, Space, Tag, Typography } from 'antd';
+import { Alert, App, Button, Drawer, Input, Modal, Popconfirm, Space, Tag, Typography } from 'antd';
 import { useRef, useState } from 'react';
 
 import { apiClient, getSafeError } from '@/api/client';
@@ -26,6 +27,7 @@ import { PageIntro } from '@/components/PageIntro';
 import { EnabledBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatDateTime, formatUsd } from '@/lib/format';
+import { optionalGrantAlias, ungrantedModelIds } from '@/lib/grantForm';
 import { modelAliasPattern } from '@/lib/modelAlias';
 import type { PublishedModel, Role, UserModelGrant, UserRecord } from '@/types';
 
@@ -39,10 +41,17 @@ interface UserFormValues {
 
 interface GrantFormValues {
   publishedModelId: string;
-  alias: string;
+  alias?: string;
   customInputPriceUsdPerMillion?: number | null;
   customOutputPriceUsdPerMillion?: number | null;
   enabled: boolean;
+}
+
+interface BatchGrantResponse {
+  userId: string;
+  created: number;
+  skippedExisting: number;
+  grants: UserModelGrant[];
 }
 
 export function UsersPage() {
@@ -54,6 +63,14 @@ export function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<UserRecord>();
   const [grantFormOpen, setGrantFormOpen] = useState(false);
   const [editingGrant, setEditingGrant] = useState<UserModelGrant>();
+  const [batchGrantOpen, setBatchGrantOpen] = useState(false);
+  const [batchGrantModels, setBatchGrantModels] = useState<PublishedModel[]>([]);
+  const [batchGrantedModelIds, setBatchGrantedModelIds] = useState<string[]>([]);
+  const [batchSelectedModelIds, setBatchSelectedModelIds] = useState<string[]>([]);
+  const [batchGrantLoading, setBatchGrantLoading] = useState(false);
+  const [batchGrantSubmitting, setBatchGrantSubmitting] = useState(false);
+  const [batchGrantLoadError, setBatchGrantLoadError] = useState<string>();
+  const [batchGrantSearch, setBatchGrantSearch] = useState('');
   const [generatedCredential, setGeneratedCredential] = useState<{
     email: string;
     password: string;
@@ -62,6 +79,48 @@ export function UsersPage() {
   const notifyError = (reason: unknown) => {
     const error = getSafeError(reason);
     message.error(`${error.message}${error.requestId ? ` (${error.requestId})` : ''}`);
+  };
+
+  const loadBatchGrantModels = async (userId: string) => {
+    setBatchGrantLoading(true);
+    setBatchGrantLoadError(undefined);
+    try {
+      const [models, grants] = await Promise.all([
+        apiClient.get<PublishedModel[]>(endpoints.publishedModels),
+        apiClient.get<UserModelGrant[]>(endpoints.userGrants(userId)),
+      ]);
+      setBatchGrantModels(models.filter((model) => model.enabled));
+      setBatchGrantedModelIds(grants.map((grant) => grant.publishedModelId));
+    } catch (reason) {
+      const error = getSafeError(reason);
+      setBatchGrantModels([]);
+      setBatchGrantedModelIds([]);
+      setBatchGrantLoadError(`${error.message}${error.requestId ? ` (${error.requestId})` : ''}`);
+    } finally {
+      setBatchGrantLoading(false);
+    }
+  };
+
+  const openBatchGrant = () => {
+    if (!selectedUser) return;
+    setBatchSelectedModelIds([]);
+    setBatchGrantModels([]);
+    setBatchGrantedModelIds([]);
+    setBatchGrantLoadError(undefined);
+    setBatchGrantSearch('');
+    setBatchGrantOpen(true);
+    void loadBatchGrantModels(selectedUser.id);
+  };
+
+  const refreshSelectedUserGrantCount = async (userId: string) => {
+    try {
+      const grants = await apiClient.get<UserModelGrant[]>(endpoints.userGrants(userId));
+      setSelectedUser((current) =>
+        current?.id === userId ? { ...current, modelGrantCount: grants.length } : current,
+      );
+    } catch {
+      // The main mutation already succeeded. The table reload will reconcile the count.
+    }
   };
 
   const toggleUser = async (user: UserRecord) => {
@@ -84,6 +143,11 @@ export function UsersPage() {
       message.success(tr('模型授權已移除', 'Model grant removed'));
       grantTableRef.current?.reload();
       userTableRef.current?.reload();
+      setSelectedUser((current) =>
+        current?.id === selectedUser.id
+          ? { ...current, modelGrantCount: Math.max(0, current.modelGrantCount - 1) }
+          : current,
+      );
     } catch (error) {
       notifyError(error);
     }
@@ -258,14 +322,56 @@ export function UsersPage() {
     },
   ];
 
+  const grantedModelIds = new Set(batchGrantedModelIds);
+  const batchGrantableModelIds = ungrantedModelIds(
+    batchGrantModels.map((model) => model.id),
+    batchGrantedModelIds,
+  );
+  const normalizedBatchSearch = batchGrantSearch.trim().toLowerCase();
+  const visibleBatchGrantModels = normalizedBatchSearch
+    ? batchGrantModels.filter((model) =>
+        [model.publicName, model.upstreamModelId, model.providerName].some((value) =>
+          value.toLowerCase().includes(normalizedBatchSearch),
+        ),
+      )
+    : batchGrantModels;
+  const batchGrantColumns: ProColumns<PublishedModel>[] = [
+    {
+      title: tr('已發布模型', 'Published model'),
+      dataIndex: 'publicName',
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{row.publicName}</Typography.Text>
+          <Typography.Text type="secondary">{row.providerName}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: tr('授權後的模型名稱', 'Name after granting'),
+      dataIndex: 'upstreamModelId',
+      render: (_, row) => <Typography.Text code>{row.upstreamModelId}</Typography.Text>,
+    },
+    {
+      title: tr('狀態', 'Status'),
+      dataIndex: 'id',
+      width: 110,
+      render: (_, row) =>
+        grantedModelIds.has(row.id) ? (
+          <Tag>{tr('已授權', 'Granted')}</Tag>
+        ) : (
+          <Tag color="blue">{tr('可授權', 'Available')}</Tag>
+        ),
+    },
+  ];
+
   return (
     <>
       <PageIntro
         eyebrow={tr('超管', 'Administration')}
         title={tr('使用者與模型授權', 'Users and model grants')}
         description={tr(
-          '新使用者預設沒有任何可用模型。授權時可設定專屬別名與價格；空白價格會繼承全局，0 表示免費。',
-          'New users start with zero models. Each grant can define a private alias and pricing; blank inherits global pricing and zero means free.',
+          '新使用者預設沒有任何可用模型。專屬名稱留空時會使用上游模型 ID；空白價格會繼承全局，0 表示免費。',
+          'New users start with zero models. A blank private name uses the upstream model ID; blank pricing inherits global pricing and zero means free.',
         )}
         actions={
           <Button type="primary" icon={<UserAddOutlined />} onClick={() => setUserFormOpen(true)}>
@@ -414,18 +520,29 @@ export function UsersPage() {
             ? `${selectedUser.displayName || selectedUser.email} · ${tr('模型授權', 'Model grants')}`
             : undefined
         }
-        onClose={() => setSelectedUser(undefined)}
+        onClose={() => {
+          setBatchGrantOpen(false);
+          setGrantFormOpen(false);
+          setBatchSelectedModelIds([]);
+          setEditingGrant(undefined);
+          setSelectedUser(undefined);
+        }}
         extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingGrant(undefined);
-              setGrantFormOpen(true);
-            }}
-          >
-            {tr('授權模型', 'Grant model')}
-          </Button>
+          <Space>
+            <Button icon={<AppstoreAddOutlined />} onClick={openBatchGrant}>
+              {tr('批次授權', 'Batch grant')}
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingGrant(undefined);
+                setGrantFormOpen(true);
+              }}
+            >
+              {tr('授權單一模型', 'Grant one model')}
+            </Button>
+          </Space>
         }
       >
         {selectedUser ? (
@@ -468,6 +585,163 @@ export function UsersPage() {
         ) : null}
       </Drawer>
 
+      <ModalForm
+        key={`batch-grant-${selectedUser?.id ?? 'none'}`}
+        title={tr('批次授權模型', 'Batch grant models')}
+        open={batchGrantOpen}
+        modalProps={{
+          destroyOnClose: true,
+          width: 940,
+          maskClosable: !batchGrantSubmitting,
+          onCancel: () => setBatchGrantOpen(false),
+        }}
+        submitter={{
+          searchConfig: {
+            resetText: tr('取消', 'Cancel'),
+            submitText: tr(
+              `授權選取的 ${batchSelectedModelIds.length} 個模型`,
+              `Grant ${batchSelectedModelIds.length} selected models`,
+            ),
+          },
+          resetButtonProps: { disabled: batchGrantSubmitting },
+          submitButtonProps: {
+            disabled: batchSelectedModelIds.length === 0 || batchGrantLoading,
+            loading: batchGrantSubmitting,
+          },
+        }}
+        onFinish={async () => {
+          if (!selectedUser || batchSelectedModelIds.length === 0) return false;
+          setBatchGrantSubmitting(true);
+          try {
+            const result = await apiClient.post<BatchGrantResponse>(
+              endpoints.userGrantsBatch(selectedUser.id),
+              { publishedModelIds: batchSelectedModelIds },
+            );
+            const skipped = result.skippedExisting ?? 0;
+            message.success(
+              tr(
+                `已新增 ${result.created} 個模型授權${skipped ? `，略過 ${skipped} 個既有授權` : ''}`,
+                `${result.created} model grants added${skipped ? `; ${skipped} existing grants skipped` : ''}`,
+              ),
+            );
+            setSelectedUser((current) =>
+              current?.id === result.userId
+                ? { ...current, modelGrantCount: current.modelGrantCount + result.created }
+                : current,
+            );
+            setBatchGrantOpen(false);
+            grantTableRef.current?.reload();
+            userTableRef.current?.reload();
+            return true;
+          } catch (error) {
+            const safe = getSafeError(error);
+            if (
+              safe.code === 'invalid_request_error' &&
+              (safe.status === 400 || safe.status === 409)
+            ) {
+              message.error(
+                `${tr(
+                  '批次內有重複、已占用或無法直接作為名稱的上游模型 ID；請改用單筆授權設定自訂名稱。',
+                  'A selected upstream model ID is duplicated, already in use, or cannot be used directly as a name. Grant that model individually with a custom name.',
+                )}${safe.requestId ? ` (${safe.requestId})` : ''}`,
+              );
+            } else {
+              notifyError(error);
+            }
+            return false;
+          } finally {
+            setBatchGrantSubmitting(false);
+          }
+        }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={tr(
+            '批次授權會使用上游模型 ID 作為使用者看到及呼叫的名稱。',
+            'Batch grants use upstream model IDs as the names users see and call.',
+          )}
+          description={tr(
+            '只會新增尚未授權的模型，不會覆寫既有設定。若模型名稱互相衝突，整批都不會寫入；請改用「授權單一模型」設定自訂名稱。',
+            'Only models not yet granted are added; existing settings are never overwritten. If model names conflict, nothing is written. Grant those models one at a time with custom names instead.',
+          )}
+        />
+
+        {batchGrantLoadError ? (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={tr('無法載入可授權模型', 'Could not load grantable models')}
+            description={batchGrantLoadError}
+            action={
+              <Button
+                size="small"
+                onClick={() => {
+                  if (selectedUser) void loadBatchGrantModels(selectedUser.id);
+                }}
+              >
+                {tr('重試', 'Retry')}
+              </Button>
+            }
+          />
+        ) : null}
+
+        <ProTable<PublishedModel>
+          rowKey="id"
+          columns={batchGrantColumns}
+          dataSource={visibleBatchGrantModels}
+          loading={batchGrantLoading}
+          search={false}
+          options={false}
+          cardBordered
+          scroll={{ x: 760, y: 420 }}
+          pagination={{ defaultPageSize: 10, showSizeChanger: true }}
+          rowSelection={{
+            selectedRowKeys: batchSelectedModelIds,
+            preserveSelectedRowKeys: true,
+            getCheckboxProps: (row) => ({ disabled: grantedModelIds.has(row.id) }),
+            onChange: (keys) => setBatchSelectedModelIds(keys.map(String)),
+          }}
+          tableAlertRender={({ selectedRowKeys }) => (
+            <Typography.Text>
+              {tr(
+                `已選擇 ${selectedRowKeys.length} 個模型`,
+                `${selectedRowKeys.length} models selected`,
+              )}
+            </Typography.Text>
+          )}
+          toolBarRender={() => [
+            <Input.Search
+              key="search"
+              allowClear
+              value={batchGrantSearch}
+              placeholder={tr('搜尋模型、上游 ID 或來源', 'Search model, upstream ID, or provider')}
+              style={{ width: 280 }}
+              onChange={(event) => setBatchGrantSearch(event.target.value)}
+            />,
+            <Button
+              key="select-all"
+              disabled={batchGrantableModelIds.length === 0 || batchGrantLoading}
+              onClick={() => setBatchSelectedModelIds(batchGrantableModelIds)}
+            >
+              {tr(
+                `全選可授權模型（${batchGrantableModelIds.length}）`,
+                `Select all grantable (${batchGrantableModelIds.length})`,
+              )}
+            </Button>,
+            <Button
+              key="clear"
+              disabled={batchSelectedModelIds.length === 0}
+              onClick={() => setBatchSelectedModelIds([])}
+            >
+              {tr('清除選取', 'Clear selection')}
+            </Button>,
+          ]}
+        />
+      </ModalForm>
+
       <ModalForm<GrantFormValues>
         key={editingGrant?.id ?? 'new-grant'}
         title={
@@ -494,9 +768,11 @@ export function UsersPage() {
         }
         onFinish={async (values) => {
           if (!selectedUser) return false;
+          const submittedAlias = optionalGrantAlias(values.alias);
           try {
             const payload = {
               ...values,
+              alias: submittedAlias,
               customInputPriceUsdPerMillion:
                 values.customInputPriceUsdPerMillion === undefined ||
                 values.customInputPriceUsdPerMillion === null
@@ -526,9 +802,20 @@ export function UsersPage() {
             setGrantFormOpen(false);
             grantTableRef.current?.reload();
             userTableRef.current?.reload();
+            await refreshSelectedUserGrantCount(selectedUser.id);
             return true;
           } catch (error) {
-            notifyError(error);
+            const safe = getSafeError(error);
+            if (!submittedAlias && safe.code === 'invalid_request_error' && safe.status === 400) {
+              message.error(
+                `${tr(
+                  '此上游模型 ID 無法直接作為使用者名稱，請填寫自訂名稱。',
+                  'This upstream model ID cannot be used directly as a user-visible name. Enter a custom name.',
+                )}${safe.requestId ? ` (${safe.requestId})` : ''}`,
+              );
+            } else {
+              notifyError(error);
+            }
             return false;
           }
         }}
@@ -539,14 +826,22 @@ export function UsersPage() {
           disabled={Boolean(editingGrant)}
           request={async () => {
             try {
-              const result = await apiClient.list<PublishedModel>(endpoints.publishedModels, {
-                pageSize: 500,
-                enabled: true,
-              });
-              return result.data.map((model) => ({
-                label: `${model.publicName} · ${model.providerName}`,
-                value: model.id,
-              }));
+              if (!selectedUser) return [];
+              const [models, grants] = await Promise.all([
+                apiClient.get<PublishedModel[]>(endpoints.publishedModels),
+                apiClient.get<UserModelGrant[]>(endpoints.userGrants(selectedUser.id)),
+              ]);
+              const grantedIds = new Set(
+                grants
+                  .filter((grant) => grant.id !== editingGrant?.id)
+                  .map((grant) => grant.publishedModelId),
+              );
+              return models
+                .filter((model) => model.enabled && !grantedIds.has(model.id))
+                .map((model) => ({
+                  label: `${model.publicName} · ${model.upstreamModelId} · ${model.providerName}`,
+                  value: model.id,
+                }));
             } catch (error) {
               notifyError(error);
               return [];
@@ -556,13 +851,16 @@ export function UsersPage() {
         />
         <ProFormText
           name="alias"
-          label={tr('使用者專屬模型名稱', 'User-visible model alias')}
+          label={tr('使用者專屬模型名稱（選填）', 'User-visible model name (optional)')}
           tooltip={tr(
-            '同一使用者的別名必須唯一；上游模型名稱永遠不會對客戶顯示。',
-            'Aliases must be unique per user. Upstream model IDs are never shown to customers.',
+            '選填；留空會把上游模型 ID 作為此使用者看到及呼叫的名稱。如需隱藏上游名稱，請填自訂名稱。同一使用者的名稱必須唯一。',
+            'Optional. Leave blank to use the upstream model ID as the name this user sees and calls. Enter a custom name to hide the upstream name. Names must be unique per user.',
           )}
+          fieldProps={{
+            placeholder: tr('留空即使用上游模型 ID', 'Leave blank to use upstream model ID'),
+          }}
           rules={[
-            { required: true },
+            { max: 255 },
             {
               pattern: modelAliasPattern,
               message: tr(

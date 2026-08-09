@@ -15,6 +15,7 @@ export const endpoints = {
   user: (id: string) => `${admin}/users/${encodeURIComponent(id)}`,
   grants: `${admin}/grants`,
   userGrants: (id: string) => `${admin}/grants?userId=${encodeURIComponent(id)}`,
+  userGrantsBatch: (id: string) => `${admin}/users/${encodeURIComponent(id)}/grants/batch`,
   userGrant: (_userId: string, grantId: string) => `${admin}/grants/${encodeURIComponent(grantId)}`,
   adminUsage: `${admin}/usage`,
   adminUsageCsv: `${admin}/usage.csv`,

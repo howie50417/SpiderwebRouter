@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeApiPayload } from '@/api/normalize';
+import { normalizeApiPayload, normalizeRequestPayload } from '@/api/normalize';
 
 describe('discovered-model normalization', () => {
   it('preserves supported, unsupported, and unconfirmed capability states', () => {
@@ -60,5 +60,47 @@ describe('discovered-model normalization', () => {
     ]) as Array<Record<string, unknown>>;
 
     expect(model!.metadata).toEqual({ supportedThinkingLevels: ['OFF', 'HIGH', 'MAX'] });
+  });
+});
+
+describe('batch grant normalization', () => {
+  const path = '/admin/users/user-1/grants/batch';
+
+  it('does not reinterpret the batch request as a user update', () => {
+    expect(normalizeRequestPayload(path, { publishedModelIds: ['model-1', 'model-2'] })).toEqual({
+      publishedModelIds: ['model-1', 'model-2'],
+    });
+  });
+
+  it('preserves the batch summary and normalizes returned grants', () => {
+    expect(
+      normalizeApiPayload(path, {
+        userId: 'user-1',
+        created: 1,
+        skippedExisting: 0,
+        grants: [
+          {
+            id: 'grant-1',
+            alias: 'upstream/model',
+            active: true,
+            customInputPricePerM: null,
+            customOutputPricePerM: '2',
+          },
+        ],
+      }),
+    ).toMatchObject({
+      userId: 'user-1',
+      created: 1,
+      skippedExisting: 0,
+      grants: [
+        {
+          id: 'grant-1',
+          alias: 'upstream/model',
+          enabled: true,
+          customInputPriceUsdPerMillion: null,
+          customOutputPriceUsdPerMillion: '2',
+        },
+      ],
+    });
   });
 });

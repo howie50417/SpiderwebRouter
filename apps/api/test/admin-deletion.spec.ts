@@ -12,6 +12,9 @@ const actor: AuthenticatedPrincipal = {
 
 function createHarness() {
   const prisma = {
+    user: {
+      findUnique: vi.fn().mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333' }),
+    },
     providerConnection: {
       findFirst: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
@@ -26,6 +29,7 @@ function createHarness() {
     },
     userModelGrant: {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
       upsert: vi.fn().mockResolvedValue({ id: 'grant-id' }),
     },

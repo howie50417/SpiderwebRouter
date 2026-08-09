@@ -14,6 +14,9 @@ function createHarness() {
   const publishedModelCreate = vi.fn().mockResolvedValue({ id: 'published-model-id' });
   const grantUpsert = vi.fn().mockResolvedValue({ id: 'grant-id' });
   const prisma = {
+    user: {
+      findUnique: vi.fn().mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333' }),
+    },
     providerConnection: {
       findFirst: vi.fn().mockResolvedValue({
         id: '22222222-2222-4222-8222-222222222222',
@@ -27,7 +30,7 @@ function createHarness() {
         deletedAt: null,
       }),
     },
-    userModelGrant: { upsert: grantUpsert },
+    userModelGrant: { findFirst: vi.fn().mockResolvedValue(null), upsert: grantUpsert },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
     $transaction: vi.fn(),
   };
@@ -89,5 +92,59 @@ describe('model alias validation', () => {
         create: expect.objectContaining({ alias }),
       }),
     );
+  });
+
+  it.each([
+    ['omitted', undefined],
+    ['blank', '   '],
+  ])('uses the upstream model ID when a user-specific alias is %s', async (_case, alias) => {
+    const { service, prisma, grantUpsert } = createHarness();
+    prisma.publishedModel.findFirst.mockResolvedValue({
+      id: '44444444-4444-4444-8444-444444444444',
+      upstreamModelId: 'upstream/DeepSeek-V4',
+      deletedAt: null,
+    });
+
+    await service.upsertGrant(
+      {
+        userId: '33333333-3333-4333-8333-333333333333',
+        publishedModelId: '44444444-4444-4444-8444-444444444444',
+        ...(alias === undefined ? {} : { alias }),
+      },
+      actor,
+      'request-id',
+    );
+
+    expect(grantUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ alias: 'upstream/DeepSeek-V4' }),
+        update: expect.objectContaining({ alias: 'upstream/DeepSeek-V4' }),
+      }),
+    );
+  });
+
+  it('rejects an invalid upstream fallback without writing a grant', async () => {
+    const { service, prisma, grantUpsert } = createHarness();
+    prisma.publishedModel.findFirst.mockResolvedValue({
+      id: '44444444-4444-4444-8444-444444444444',
+      upstreamModelId: 'invalid model name',
+      deletedAt: null,
+    });
+
+    await expect(
+      service.upsertGrant(
+        {
+          userId: '33333333-3333-4333-8333-333333333333',
+          publishedModelId: '44444444-4444-4444-8444-444444444444',
+        },
+        actor,
+        'request-id',
+      ),
+    ).rejects.toMatchObject({
+      code: 'invalid_request_error',
+      statusCode: 400,
+      param: 'alias',
+    });
+    expect(grantUpsert).not.toHaveBeenCalled();
   });
 });

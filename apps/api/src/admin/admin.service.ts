@@ -60,18 +60,30 @@ const userSchema = z.object({
   temporaryPassword: z.string().min(12).max(1024).optional(),
 });
 
+const grantAliasPattern = /^[A-Za-z0-9._:/-]+$/;
+
 const grantSchema = z.object({
   userId: z.string().uuid(),
   publishedModelId: z.string().uuid(),
   alias: z
     .string()
     .trim()
-    .min(1)
     .max(255)
-    .regex(/^[A-Za-z0-9._:/-]+$/),
+    .refine((value) => value.length === 0 || grantAliasPattern.test(value), {
+      message: 'The model alias contains unsupported characters.',
+    })
+    .optional()
+    .nullable(),
   customInputPricePerM: z.coerce.number().nonnegative().max(1000000).nullable().optional(),
   customOutputPricePerM: z.coerce.number().nonnegative().max(1000000).nullable().optional(),
   active: z.boolean().default(true),
+});
+
+const grantBatchSchema = z.object({
+  publishedModelIds: z.array(z.string().uuid()).min(1).max(5000).optional(),
+  // Kept as a request-only compatibility alias. Responses and documentation
+  // use publishedModelIds so there is one canonical public name.
+  modelIds: z.array(z.string().uuid()).min(1).max(5000).optional(),
 });
 
 export interface AdminDeleteResult {
@@ -561,26 +573,148 @@ export class AdminService {
 
   async upsertGrant(input: unknown, actor: AuthenticatedPrincipal, requestId: string) {
     const value = parse(grantSchema, input);
-    return this.withSerializableTransaction(async (tx) => {
-      await this.requireModel(value.publishedModelId, tx);
-      const grant = await tx.userModelGrant.upsert({
-        where: {
-          userId_publishedModelId: {
+    try {
+      return await this.withSerializableTransaction(async (tx) => {
+        await this.requireUser(value.userId, tx);
+        const model = await this.requireModel(value.publishedModelId, tx);
+        const alias = validateGrantAlias(value.alias || model.upstreamModelId, 'alias');
+        const conflictingGrant = await tx.userModelGrant.findFirst({
+          where: {
             userId: value.userId,
-            publishedModelId: value.publishedModelId,
+            alias,
+            NOT: { publishedModelId: value.publishedModelId },
           },
-        },
-        create: value,
-        update: {
-          alias: value.alias,
-          active: value.active,
-          customInputPricePerM: value.customInputPricePerM,
-          customOutputPricePerM: value.customOutputPricePerM,
-        },
+          select: { id: true },
+        });
+        if (conflictingGrant) throw grantAliasConflict('alias');
+        const grant = await tx.userModelGrant.upsert({
+          where: {
+            userId_publishedModelId: {
+              userId: value.userId,
+              publishedModelId: value.publishedModelId,
+            },
+          },
+          create: { ...value, alias },
+          update: {
+            alias,
+            active: value.active,
+            customInputPricePerM: value.customInputPricePerM,
+            customOutputPricePerM: value.customOutputPricePerM,
+          },
+        });
+        await this.audit(
+          actor,
+          'grant.upsert',
+          'UserModelGrant',
+          grant.id,
+          requestId,
+          undefined,
+          tx,
+        );
+        return grant;
       });
-      await this.audit(actor, 'grant.upsert', 'UserModelGrant', grant.id, requestId, undefined, tx);
-      return grant;
-    });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) throw grantAliasConflict('alias');
+      throw error;
+    }
+  }
+
+  async createGrantsBatch(
+    userId: string,
+    input: unknown,
+    actor: AuthenticatedPrincipal,
+    requestId: string,
+  ) {
+    userId = parse(z.object({ userId: z.string().uuid() }), { userId }).userId;
+    const value = parse(grantBatchSchema, input);
+    const requestedIds = value.publishedModelIds ?? value.modelIds;
+    if (!requestedIds) {
+      throw new AppError(
+        'invalid_request_error',
+        400,
+        'At least one published model must be selected.',
+        'publishedModelIds',
+      );
+    }
+    const publishedModelIds = [...new Set(requestedIds)];
+
+    try {
+      return await this.withSerializableTransaction(async (tx) => {
+        await this.requireUser(userId, tx);
+        const models = await tx.publishedModel.findMany({
+          where: {
+            id: { in: publishedModelIds },
+            deletedAt: null,
+            provider: { deletedAt: null },
+          },
+          select: { id: true, upstreamModelId: true },
+        });
+        if (models.length !== publishedModelIds.length) throw batchModelsNotFound();
+
+        const modelById = new Map(models.map((model) => [model.id, model]));
+        const orderedModels = publishedModelIds.map((id) => modelById.get(id)!);
+        const existingForModels = await tx.userModelGrant.findMany({
+          where: { userId, publishedModelId: { in: publishedModelIds } },
+          select: { publishedModelId: true },
+        });
+        const existingModelIds = new Set(existingForModels.map((grant) => grant.publishedModelId));
+        const candidates = orderedModels
+          .filter((model) => !existingModelIds.has(model.id))
+          .map((model) => ({
+            userId,
+            publishedModelId: model.id,
+            alias: validateGrantAlias(model.upstreamModelId, 'publishedModelIds'),
+            active: true,
+            customInputPricePerM: null,
+            customOutputPricePerM: null,
+          }));
+
+        const aliases = candidates.map((candidate) => candidate.alias);
+        if (new Set(aliases).size !== aliases.length) {
+          throw grantAliasConflict('publishedModelIds');
+        }
+        if (aliases.length > 0) {
+          const conflictingGrant = await tx.userModelGrant.findFirst({
+            where: { userId, alias: { in: aliases } },
+            select: { id: true },
+          });
+          if (conflictingGrant) throw grantAliasConflict('publishedModelIds');
+          await tx.userModelGrant.createMany({ data: candidates });
+        }
+
+        const grants = await tx.userModelGrant.findMany({
+          where: { userId, publishedModelId: { in: publishedModelIds } },
+          orderBy: { createdAt: 'asc' },
+        });
+        const createdModelIds = new Set(candidates.map((candidate) => candidate.publishedModelId));
+        const createdGrants = grants.filter((grant) => createdModelIds.has(grant.publishedModelId));
+        if (createdGrants.length > 0) {
+          await tx.auditLog.createMany({
+            data: createdGrants.map((grant) => ({
+              actorUserId: actor.userId,
+              action: 'grant.batch.create',
+              entityType: 'UserModelGrant',
+              entityId: grant.id,
+              requestId,
+              metadata: {
+                userId,
+                publishedModelId: grant.publishedModelId,
+              },
+            })),
+          });
+        }
+
+        return {
+          userId,
+          created: createdGrants.length,
+          skippedExisting: existingModelIds.size,
+          grants,
+        };
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) throw grantAliasConflict('publishedModelIds');
+      throw error;
+    }
   }
 
   async deleteGrant(id: string, actor: AuthenticatedPrincipal, requestId: string) {
@@ -644,6 +778,15 @@ export class AdminService {
     return model;
   }
 
+  private async requireUser(
+    id: string,
+    client: Pick<Prisma.TransactionClient, 'user'> = this.prisma,
+  ) {
+    const user = await client.user.findUnique({ where: { id }, select: { id: true } });
+    if (!user) throw userNotFound();
+    return user;
+  }
+
   private async withSerializableTransaction<T>(
     work: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
@@ -683,6 +826,44 @@ function modelNotFound(): AppError {
   return new AppError('invalid_request_error', 404, 'The published model was not found.', 'id');
 }
 
+function batchModelsNotFound(): AppError {
+  return new AppError(
+    'invalid_request_error',
+    404,
+    'One or more published models were not found.',
+    'publishedModelIds',
+  );
+}
+
+function userNotFound(): AppError {
+  return new AppError('invalid_request_error', 404, 'The user was not found.', 'userId');
+}
+
+function validateGrantAlias(alias: string, param: 'alias' | 'publishedModelIds'): string {
+  if (alias.length > 255 || !grantAliasPattern.test(alias)) {
+    throw new AppError(
+      'invalid_request_error',
+      400,
+      param === 'alias'
+        ? 'The model alias contains unsupported characters.'
+        : 'An upstream model ID cannot be used as an alias. Grant that model separately with a valid user-specific name.',
+      param,
+    );
+  }
+  return alias;
+}
+
+function grantAliasConflict(param: 'alias' | 'publishedModelIds'): AppError {
+  return new AppError(
+    'invalid_request_error',
+    409,
+    param === 'alias'
+      ? 'This model alias is already in use for this user.'
+      : 'One or more model aliases are already in use for this user.',
+    param,
+  );
+}
+
 function deletedProviderName(originalName: string, id: string): string {
   return `${originalName} [deleted:${id}]`;
 }
@@ -706,6 +887,15 @@ function isRecordNotFoundError(error: unknown): boolean {
     error !== null &&
     'code' in error &&
     (error as { code?: unknown }).code === 'P2025'
+  );
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002'
   );
 }
 
