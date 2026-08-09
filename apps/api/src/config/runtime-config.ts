@@ -16,6 +16,8 @@ export interface RuntimeConfig {
   oidcClientSecret: string;
   oidcAudience?: string;
   publicBaseUrl: string;
+  authSessionIdleSeconds: number;
+  authSessionMaxSeconds: number;
   allowedHttpHosts: string[];
   logLevel: string;
 }
@@ -69,6 +71,11 @@ export function loadRuntimeConfig(
   const realmMatch = /\/realms\/([^/]+)$/.exec(oidcIssuerUrl);
   const internalBase = (process.env.KEYCLOAK_BASE_URL ?? '').replace(/\/$/, '');
   const internalRealm = internalBase && realmMatch ? `${internalBase}/realms/${realmMatch[1]}` : '';
+  const authSessionIdleSeconds = positiveInteger('AUTH_SESSION_IDLE_SECONDS', 604_800);
+  const authSessionMaxSeconds = positiveInteger('AUTH_SESSION_MAX_SECONDS', 2_592_000);
+  if (authSessionIdleSeconds > authSessionMaxSeconds) {
+    throw new Error('AUTH_SESSION_IDLE_SECONDS must not exceed AUTH_SESSION_MAX_SECONDS');
+  }
   const config: RuntimeConfig = {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: positiveInteger('PORT', 3000),
@@ -93,6 +100,8 @@ export function loadRuntimeConfig(
     oidcClientSecret: readSecret('OIDC_CLIENT_SECRET') || readSecret('KEYCLOAK_CLIENT_SECRET'),
     oidcAudience: process.env.OIDC_AUDIENCE || undefined,
     publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? 'http://localhost').replace(/\/$/, ''),
+    authSessionIdleSeconds,
+    authSessionMaxSeconds,
     allowedHttpHosts: (process.env.ALLOWED_HTTP_HOSTS ?? 'ollama,open-webui')
       .split(',')
       .map((value) => value.trim().toLowerCase())

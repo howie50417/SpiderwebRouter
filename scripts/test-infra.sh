@@ -70,6 +70,11 @@ with pathlib.Path(sys.argv[1]).open(encoding="utf-8") as realm_file:
 
 assert realm["realm"] == "spiderwebrouter"
 assert realm["registrationAllowed"] is False
+assert realm["accessTokenLifespan"] == 300
+assert realm["ssoSessionIdleTimeout"] == 604800
+assert realm["ssoSessionMaxLifespan"] == 2592000
+assert realm["clientSessionIdleTimeout"] == 604800
+assert realm["clientSessionMaxLifespan"] == 2592000
 totp = next(action for action in realm["requiredActions"] if action["alias"] == "CONFIGURE_TOTP")
 assert totp["enabled"] is True
 assert totp["defaultAction"] is False
@@ -104,6 +109,11 @@ assert "build" in services["migrate"]
 for service_name in ("api", "worker", "bootstrap"):
     assert "build" not in services[service_name]
     assert services[service_name]["pull_policy"] == "never"
+
+for service_name in ("api", "worker", "migrate", "bootstrap"):
+    environment = services[service_name]["environment"]
+    assert str(environment["AUTH_SESSION_IDLE_SECONDS"]) == "604800"
+    assert str(environment["AUTH_SESSION_MAX_SECONDS"]) == "2592000"
 PY
 
 [[ -f apps/api/src/main.ts ]] || fail "apps/api/src/main.ts is missing"

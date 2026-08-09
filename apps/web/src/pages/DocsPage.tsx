@@ -3,6 +3,7 @@ import { BookOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { Alert, Space, Typography } from 'antd';
 
 import { endpoints } from '@/api/endpoints';
+import { handleControlPlaneUnauthorized } from '@/auth/sessionExpiry';
 import { PageIntro } from '@/components/PageIntro';
 import { useAppSettings } from '@/context/AppSettings';
 
@@ -28,7 +29,13 @@ async function authenticatedDocsFetch(
       ? `/api/me/docs-test/models/${encodeURIComponent(decodeURIComponent(url.pathname.slice(modelPrefix.length)))}`
       : undefined;
   const route = directRoute ?? modelRoute;
-  if (!route) return fetch(request);
+  if (!route) {
+    const response = await fetch(request);
+    if (url.pathname.startsWith('/api/') && response.status === 401) {
+      handleControlPlaneUnauthorized();
+    }
+    return response;
+  }
 
   const headers = new Headers(request.headers);
   headers.delete('authorization');
@@ -37,13 +44,15 @@ async function authenticatedDocsFetch(
     request.method === 'GET' || request.method === 'HEAD'
       ? undefined
       : await request.clone().arrayBuffer();
-  return fetch(`${route}${url.search}`, {
+  const response = await fetch(`${route}${url.search}`, {
     method: request.method,
     headers,
     body,
     credentials: 'include',
     signal: request.signal,
   });
+  if (response.status === 401) handleControlPlaneUnauthorized();
+  return response;
 }
 
 export function DocsPage() {

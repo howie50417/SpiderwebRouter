@@ -25,7 +25,8 @@ import {
   Upload,
   type UploadFile,
 } from 'antd';
-import { useMemo, useState } from 'react';
+import type { ThinkingLevel } from '@spiderwebrouter/contracts';
+import { useEffect, useMemo, useState } from 'react';
 
 import { apiClient, getSafeError } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
@@ -33,6 +34,7 @@ import { useApiResource } from '@/api/hooks';
 import { EmptyState, ErrorState, PageSkeleton } from '@/components/AsyncState';
 import { PageIntro } from '@/components/PageIntro';
 import { useAppSettings } from '@/context/AppSettings';
+import { playgroundModelControls } from '@/lib/playgroundRequest';
 import type { ModelOption } from '@/types';
 
 type PlaygroundMode = 'chat' | 'responses' | 'embeddings';
@@ -44,6 +46,7 @@ interface PlaygroundFormValues {
   temperature?: number;
   dimensions?: number;
   toolsJson?: string;
+  reasoningEffort?: ThinkingLevel;
 }
 
 interface PlaygroundResult {
@@ -90,6 +93,15 @@ export function PlaygroundPage() {
         ? model.capabilities.responses
         : model.capabilities.chat,
   );
+  const temperatureUnsupported = selectedModel?.parameterSupport.temperature === false;
+  const userSelectableThinking =
+    selectedModel?.thinkingControlMode === 'USER_SELECTABLE' &&
+    selectedModel.supportedThinkingLevels.length > 0;
+
+  useEffect(() => {
+    form.setFieldValue('reasoningEffort', undefined);
+    if (temperatureUnsupported) form.setFieldValue('temperature', undefined);
+  }, [form, selectedModel?.id, temperatureUnsupported]);
 
   const resetResult = () => {
     setResult(undefined);
@@ -121,6 +133,12 @@ export function PlaygroundPage() {
 
       let endpoint: string;
       let payload: Record<string, unknown>;
+      const modelControls = playgroundModelControls(
+        mode,
+        selectedModel,
+        values.temperature,
+        values.reasoningEffort,
+      );
       if (mode === 'chat') {
         endpoint = endpoints.playgroundChat;
         payload = {
@@ -137,7 +155,7 @@ export function PlaygroundPage() {
             },
           ],
           stream: Boolean(values.stream),
-          temperature: values.temperature,
+          ...modelControls,
           tools,
         };
       } else if (mode === 'responses') {
@@ -156,7 +174,7 @@ export function PlaygroundPage() {
               ]
             : values.prompt,
           stream: Boolean(values.stream),
-          temperature: values.temperature,
+          ...modelControls,
           tools,
         };
       } else {
@@ -316,8 +334,25 @@ export function PlaygroundPage() {
                     <>
                       {mode !== 'embeddings' ? (
                         <>
-                          <Form.Item name="temperature" label="Temperature">
-                            <InputNumber min={0} max={2} step={0.1} className="full-width" />
+                          <Form.Item
+                            name="temperature"
+                            label="Temperature"
+                            extra={
+                              temperatureUnsupported
+                                ? tr(
+                                    '此模型不支援 Temperature；Router 也會在伺服器端移除此參數。',
+                                    'This model does not support Temperature. The Router also removes it server-side.',
+                                  )
+                                : undefined
+                            }
+                          >
+                            <InputNumber
+                              min={0}
+                              max={2}
+                              step={0.1}
+                              className="full-width"
+                              disabled={temperatureUnsupported}
+                            />
                           </Form.Item>
                           <Form.Item
                             name="stream"
@@ -326,12 +361,35 @@ export function PlaygroundPage() {
                           >
                             <Switch />
                           </Form.Item>
+                          {userSelectableThinking ? (
+                            <Form.Item
+                              name="reasoningEffort"
+                              label={tr('Thinking 強度', 'Thinking effort')}
+                              extra={tr(
+                                '留空會使用 Provider 預設；只能選擇管理員已確認的檔位。',
+                                'Leave blank to use the provider default. Only administrator-confirmed levels are available.',
+                              )}
+                            >
+                              <Select
+                                allowClear
+                                placeholder={tr('Provider 預設', 'Provider default')}
+                                options={selectedModel.supportedThinkingLevels.map((level) => ({
+                                  value: level,
+                                  label: level,
+                                }))}
+                              />
+                            </Form.Item>
+                          ) : null}
                           <Form.Item
                             name="toolsJson"
                             label="Tools JSON"
                             extra={tr(
-                              'Thinking 強度由管理員設定，無法在此覆寫。',
-                              'Thinking level is server-controlled and cannot be overridden here.',
+                              userSelectableThinking
+                                ? '此模型已開放使用者自行設定 Thinking。'
+                                : 'Thinking 強度由管理員固定，無法在此覆寫。',
+                              userSelectableThinking
+                                ? 'This model allows users to choose a Thinking level.'
+                                : 'Thinking level is fixed by the administrator and cannot be overridden here.',
                             )}
                           >
                             <Input.TextArea

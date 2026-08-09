@@ -1,5 +1,6 @@
 import type { ProviderType, PublishedModel } from '@prisma/client';
 import { AppError } from '../common/errors';
+import { resolveOpenAIModelProfile, type ParameterSupportState } from './openai-model-profiles';
 
 type JsonObject = Record<string, unknown>;
 
@@ -9,12 +10,28 @@ export function prepareRequestBody(
   model: PublishedModel,
   providerType: ProviderType,
 ): JsonObject {
+  const clientThinking =
+    model.thinkingControlMode === 'USER_SELECTABLE'
+      ? readClientThinking(source, operation)
+      : undefined;
   const body = stripClientThinking(structuredClone(source)) as JsonObject;
   body.model = model.upstreamModelId;
   if (operation === 'responses') body.store = false;
   applySystemPrompt(body, operation, model);
-  applyThinking(body, operation, model.thinkingLevel, providerType);
+  applyThinking(body, operation, model, providerType, clientThinking);
+  stripUnsupportedParameters(body, operation, model, providerType);
   return body;
+}
+
+export function modelParameterSupport(
+  providerType: ProviderType,
+  upstreamModelId: string,
+): { temperature: ParameterSupportState } {
+  return {
+    temperature:
+      resolveOpenAIModelProfile(providerType, upstreamModelId)?.parameterSupport.temperature ??
+      'unconfirmed',
+  };
 }
 
 export function stripClientThinking(value: unknown): unknown {
@@ -68,10 +85,23 @@ function applySystemPrompt(
 function applyThinking(
   body: JsonObject,
   operation: 'chat' | 'responses' | 'embeddings',
-  level: PublishedModel['thinkingLevel'],
+  model: PublishedModel,
   providerType: ProviderType,
+  clientLevel?: PublishedModel['thinkingLevel'],
 ): void {
-  if (operation === 'embeddings' || level === 'PROVIDER_DEFAULT') return;
+  const level = model.thinkingControlMode === 'USER_SELECTABLE' ? clientLevel : model.thinkingLevel;
+  if (operation === 'embeddings' || level === undefined || level === 'PROVIDER_DEFAULT') return;
+  if (model.thinkingControlMode === 'USER_SELECTABLE') {
+    if (level === undefined) return;
+    if (!model.supportedThinkingLevels.includes(level)) {
+      throw new AppError(
+        'invalid_request_error',
+        400,
+        'The requested reasoning effort is not available for this model.',
+        operation === 'responses' ? 'reasoning.effort' : 'reasoning_effort',
+      );
+    }
+  }
   if (providerType === 'OLLAMA') {
     body.think = level === 'OFF' ? false : level.toLowerCase();
     return;
@@ -81,13 +111,80 @@ function applyThinking(
     return;
   }
   if (level === 'OFF') {
-    const effort = providerType === 'OPENAI' ? 'minimal' : 'none';
+    const effort =
+      providerType === 'OPENAI'
+        ? (resolveOpenAIModelProfile(providerType, model.upstreamModelId)?.thinkingWire.off ??
+          'minimal')
+        : 'none';
     if (operation === 'responses') body.reasoning = { effort };
     else body.reasoning_effort = effort;
     return;
   }
   if (operation === 'responses') body.reasoning = { effort: level.toLowerCase() };
   else body.reasoning_effort = level.toLowerCase();
+}
+
+function readClientThinking(
+  source: JsonObject,
+  operation: 'chat' | 'responses' | 'embeddings',
+): PublishedModel['thinkingLevel'] | undefined {
+  if (operation === 'embeddings') return undefined;
+  const raw =
+    operation === 'chat'
+      ? source.reasoning_effort
+      : source.reasoning && typeof source.reasoning === 'object' && !Array.isArray(source.reasoning)
+        ? (source.reasoning as JsonObject).effort
+        : undefined;
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  if (typeof raw !== 'string') {
+    throw new AppError(
+      'invalid_request_error',
+      400,
+      'The reasoning effort must be a supported string value.',
+      operation === 'responses' ? 'reasoning.effort' : 'reasoning_effort',
+    );
+  }
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, '_');
+  const level =
+    normalized === 'none' || normalized === 'off'
+      ? 'OFF'
+      : normalized === 'minimal'
+        ? 'MINIMAL'
+        : normalized === 'low'
+          ? 'LOW'
+          : normalized === 'medium'
+            ? 'MEDIUM'
+            : normalized === 'high'
+              ? 'HIGH'
+              : normalized === 'xhigh' || normalized === 'x_high' || normalized === 'extra_high'
+                ? 'XHIGH'
+                : normalized === 'max'
+                  ? 'MAX'
+                  : undefined;
+  if (!level) {
+    throw new AppError(
+      'invalid_request_error',
+      400,
+      'The requested reasoning effort is not available for this model.',
+      operation === 'responses' ? 'reasoning.effort' : 'reasoning_effort',
+    );
+  }
+  return level;
+}
+
+function stripUnsupportedParameters(
+  body: JsonObject,
+  operation: 'chat' | 'responses' | 'embeddings',
+  model: PublishedModel,
+  providerType: ProviderType,
+): void {
+  if (operation === 'embeddings') return;
+  if (modelParameterSupport(providerType, model.upstreamModelId).temperature === false) {
+    delete body.temperature;
+  }
 }
 
 export function responsesToChat(body: JsonObject): JsonObject {

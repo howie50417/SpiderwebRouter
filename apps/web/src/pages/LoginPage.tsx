@@ -5,18 +5,19 @@ import {
   RadarChartOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import { useLocation } from 'react-router-dom';
 
 import { loginHref } from '@/auth/provider';
+import { sanitizeReturnTo } from '@/auth/returnTo';
 import { useAppSettings } from '@/context/AppSettings';
 
 export function LoginPage() {
   const location = useLocation();
   const { locale, setLocale, tr } = useAppSettings();
   const params = new URLSearchParams(location.search);
-  const rawReturnTo = params.get('returnTo') ?? '/';
-  const returnTo = rawReturnTo.startsWith('/') ? rawReturnTo : '/';
+  const returnTo = sanitizeReturnTo(params.get('returnTo'));
+  const expired = params.get('reason') === 'expired';
 
   return (
     <main className="login-page">
@@ -72,6 +73,17 @@ export function LoginPage() {
         </div>
         <Card className="login-card" bordered={false}>
           <Space direction="vertical" size={24} className="full-width">
+            {expired ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={tr('登入狀態已過期', 'Your session has expired')}
+                description={tr(
+                  '請重新登入，完成後會回到原本的頁面。',
+                  'Sign in again and you will return to the page you were viewing.',
+                )}
+              />
+            ) : null}
             <div>
               <Typography.Title level={2}>
                 {tr('登入控制台', 'Sign in to the console')}

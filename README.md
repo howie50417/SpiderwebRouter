@@ -95,11 +95,15 @@ docker compose logs --tail=200 postgres migrate keycloak bootstrap api worker ed
 
 1. 以超管進入「Provider」，選擇 OpenAI、Gemini、Generic OpenAI-compatible、Ollama 或 Open WebUI。
 2. 填入 base URL、認證模式（無認證或 Bearer token）與 timeout，然後測試連線。
-3. 執行「掃描模型」。掃描只取得清單與 metadata，不會自動發出可能計費的推理請求。
-4. 從候選模型選擇要發布的項目，設定公開 alias、能力、system prompt、thinking、input/output USD 單價及 `maxRetries`。
+3. 從「模型目錄」的 Provider 分頁或 Provider 列表執行單一來源掃描。掃描只取得清單、來源狀態與版本化官方目錄資料，不會自動發出可能計費的推理請求；掃描按鈕會等背景工作完成再刷新該來源。
+4. 從該來源的候選模型選擇要發布的項目，設定公開 alias、能力、system prompt、thinking、input/output USD 單價及 `maxRetries`。OpenAI 官方模型需在升級後重新逐一掃描，候選才會套用最新官方能力目錄；既有已發布模型不會被掃描結果靜默更改。
 5. 對個別用戶授權模型，必要時覆寫 alias 或客製價格。新用戶預設可用模型數為零。
 
 `maxRetries` 是初次請求以外的重試次數，範圍 `0–5`；設定 `2` 代表最多三次 attempts。只會在尚未對客戶輸出任何 byte 時，對同一 Provider／同一上游模型的 timeout、連線錯誤、408、429、500、502、503、504 進行重試，不會暗中切換來源。
+
+Thinking 可設為「伺服器固定」或「使用者自行設定」。使用者模式只會開放來源 metadata 或官方目錄已確認的全部檔位；沒有確認資料時不能啟用。客戶未指定時採 Provider 預設，未確認的值會在呼叫上游前由 Router 以安全錯誤拒絕。GPT‑5.6 的 `temperature` 會被 Router 靜默移除，Playground 也會停用該欄位。
+
+控制台登入採 7 天閒置逾時與 30 天絕對上限，短效 access token 仍約 5 分鐘並由伺服器透明 refresh。session 過期後重新登入會回到原頁；升級此版本時，舊版瀏覽器 session 可能需要重新登入一次。
 
 ## 客戶 API
 

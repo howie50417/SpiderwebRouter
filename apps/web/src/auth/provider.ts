@@ -2,13 +2,15 @@ import type { AuthProvider } from '@refinedev/core';
 
 import { ApiError, apiClient } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
+import { consoleLoginHref, currentReturnTo, sanitizeReturnTo } from '@/auth/returnTo';
+import { registerIdentityReset } from '@/auth/sessionExpiry';
 import type { Identity } from '@/types';
 
 let cachedIdentity: Identity | undefined;
 let identityRequest: Promise<Identity> | undefined;
 
 export function loginHref(returnTo = '/'): string {
-  const safeReturnTo = returnTo.startsWith('/') ? returnTo : '/';
+  const safeReturnTo = sanitizeReturnTo(returnTo);
   return `/auth/login?returnTo=${encodeURIComponent(safeReturnTo)}`;
 }
 
@@ -30,9 +32,11 @@ export function clearIdentity(): void {
   identityRequest = undefined;
 }
 
+registerIdentityReset(clearIdentity);
+
 export const authProvider: AuthProvider = {
   login: async (params) => {
-    const returnTo = typeof params?.returnTo === 'string' ? params.returnTo : '/';
+    const returnTo = sanitizeReturnTo(params?.returnTo);
     window.location.assign(loginHref(returnTo));
     return { success: true };
   },
@@ -46,12 +50,15 @@ export const authProvider: AuthProvider = {
       await loadIdentity();
       return { authenticated: true };
     } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) {
+        return { authenticated: true, error: error as Error };
+      }
       clearIdentity();
       return {
         authenticated: false,
         error: error as Error,
-        redirectTo: '/login',
-        logout: error instanceof ApiError && error.status === 401,
+        redirectTo: consoleLoginHref(currentReturnTo(), true),
+        logout: false,
       };
     }
   },
@@ -60,7 +67,7 @@ export const authProvider: AuthProvider = {
   onError: async (error) => {
     if (error instanceof ApiError && error.status === 401) {
       clearIdentity();
-      return { logout: true, redirectTo: '/login', error };
+      return { logout: false, redirectTo: consoleLoginHref(currentReturnTo(), true), error };
     }
     return { error };
   },

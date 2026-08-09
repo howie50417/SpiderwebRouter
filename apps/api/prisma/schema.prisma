@@ -64,6 +64,13 @@ enum ThinkingLevel {
   @@schema("app")
 }
 
+enum ThinkingControlMode {
+  FIXED
+  USER_SELECTABLE
+
+  @@schema("app")
+}
+
 enum ScanStatus {
   PENDING
   RUNNING
@@ -179,26 +186,28 @@ model ScanJob {
 }
 
 model PublishedModel {
-  id                String             @id @default(uuid()) @db.Uuid
-  providerId        String             @map("provider_id") @db.Uuid
-  upstreamModelId   String             @map("upstream_model_id")
-  defaultAlias      String             @unique @map("default_alias")
-  displayName       String?            @map("display_name")
-  active            Boolean            @default(true)
-  capabilities      Json
-  promptMode        PromptMode         @default(NONE) @map("prompt_mode")
-  systemPrompt      String?            @map("system_prompt") @db.Text
-  thinkingLevel     ThinkingLevel      @default(PROVIDER_DEFAULT) @map("thinking_level")
-  maxRetries        Int                @default(0) @map("max_retries")
-  inputPricePerM    Decimal            @default(0) @map("input_price_per_m") @db.Decimal(20, 8)
-  outputPricePerM   Decimal            @default(0) @map("output_price_per_m") @db.Decimal(20, 8)
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
-  deletedAt         DateTime?          @map("deleted_at")
-  provider          ProviderConnection @relation(fields: [providerId], references: [id], onDelete: Restrict)
-  grants            UserModelGrant[]
-  inferenceRequests InferenceRequest[]
-  usageRollups      UsageDailyRollup[]
+  id                      String              @id @default(uuid()) @db.Uuid
+  providerId              String              @map("provider_id") @db.Uuid
+  upstreamModelId         String              @map("upstream_model_id")
+  defaultAlias            String              @unique @map("default_alias")
+  displayName             String?             @map("display_name")
+  active                  Boolean             @default(true)
+  capabilities            Json
+  promptMode              PromptMode          @default(NONE) @map("prompt_mode")
+  systemPrompt            String?             @map("system_prompt") @db.Text
+  thinkingLevel           ThinkingLevel       @default(PROVIDER_DEFAULT) @map("thinking_level")
+  thinkingControlMode     ThinkingControlMode @default(FIXED) @map("thinking_control_mode")
+  supportedThinkingLevels ThinkingLevel[]     @default([]) @map("supported_thinking_levels")
+  maxRetries              Int                 @default(0) @map("max_retries")
+  inputPricePerM          Decimal             @default(0) @map("input_price_per_m") @db.Decimal(20, 8)
+  outputPricePerM         Decimal             @default(0) @map("output_price_per_m") @db.Decimal(20, 8)
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+  deletedAt               DateTime?           @map("deleted_at")
+  provider                ProviderConnection  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  grants                  UserModelGrant[]
+  inferenceRequests       InferenceRequest[]
+  usageRollups            UsageDailyRollup[]
 
   @@index([providerId, upstreamModelId])
   @@index([active])

@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, apiClient } from '@/api/client';
+import {
+  registerIdentityReset,
+  resetUnauthorizedRedirectForTests,
+  setUnauthorizedNavigationForTests,
+} from '@/auth/sessionExpiry';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetUnauthorizedRedirectForTests();
 });
 
 describe('apiClient', () => {
@@ -81,6 +87,33 @@ describe('apiClient', () => {
       requestId: 'req_timeout_1',
     });
     expect(error.message).toBe('The model service took too long to respond.');
+  });
+
+  it('clears identity and starts only one login redirect for repeated 401 responses', async () => {
+    const resetIdentity = vi.fn();
+    const navigate = vi.fn();
+    registerIdentityReset(resetIdentity);
+    setUnauthorizedNavigationForTests(navigate);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { code: 'authentication_error', request_id: 'expired-session' },
+          }),
+          { status: 401, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    await Promise.allSettled([
+      apiClient.get('/admin/dashboard'),
+      apiClient.download('/me/usage.csv'),
+    ]);
+
+    expect(resetIdentity).toHaveBeenCalledTimes(2);
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith('/login?returnTo=%2F&reason=expired');
   });
 
   it('normalizes array responses and backend field names', async () => {

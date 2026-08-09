@@ -64,3 +64,8 @@ export function selectableThinkingLevels(
 
   return thinkingLevels.filter((level) => level === 'PROVIDER_DEFAULT' || confirmed.has(level));
 }
+
+export function thinkingLevelToWire(level: ThinkingLevel): string | undefined {
+  if (level === 'PROVIDER_DEFAULT') return undefined;
+  return level === 'OFF' ? 'none' : level.toLowerCase();
+}

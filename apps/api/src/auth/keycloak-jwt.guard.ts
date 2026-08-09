@@ -89,7 +89,7 @@ export class KeycloakJwtGuard implements CanActivate {
       const verified: JWTVerifyResult = await jose.jwtVerify(token, this.jwks, options);
       return verified.payload;
     } catch (error) {
-      throw new AppError('authentication_error', 401, undefined, null, error);
+      throw mapJwtVerificationError(error);
     }
   }
 
@@ -98,6 +98,43 @@ export class KeycloakJwtGuard implements CanActivate {
     const clients = payload.resource_access as Record<string, { roles?: string[] }> | undefined;
     return [...(realm?.roles ?? []), ...(clients?.[this.config.oidcClientId]?.roles ?? [])];
   }
+}
+
+const INVALID_TOKEN_ERROR_CODES = new Set([
+  'ERR_JOSE_ALG_NOT_ALLOWED',
+  'ERR_JOSE_NOT_SUPPORTED',
+  'ERR_JWS_INVALID',
+  'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
+  'ERR_JWT_CLAIM_VALIDATION_FAILED',
+  'ERR_JWT_EXPIRED',
+  'ERR_JWT_INVALID',
+  'ERR_JWKS_NO_MATCHING_KEY',
+]);
+
+export function mapJwtVerificationError(error: unknown): AppError {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '')
+      : '';
+  const name = error instanceof Error ? error.name : '';
+
+  if (code === 'ERR_JWKS_TIMEOUT' || name === 'TimeoutError' || name === 'AbortError') {
+    return new AppError('upstream_timeout', 504, 'Authentication service timed out.', null, error);
+  }
+  if (INVALID_TOKEN_ERROR_CODES.has(code)) {
+    return new AppError('authentication_error', 401, undefined, null, error);
+  }
+
+  // Network failures, a non-200/malformed JWKS response, invalid provider
+  // keys, and module/runtime failures are authentication-service outages.
+  // They must never make the browser discard an otherwise valid session.
+  return new AppError(
+    'provider_unavailable',
+    503,
+    'Authentication service is temporarily unavailable.',
+    null,
+    error,
+  );
 }
 
 export function tokenTargetsClient(payload: JWTPayload, clientId: string): boolean {

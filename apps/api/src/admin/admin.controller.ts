@@ -21,6 +21,7 @@ import { CurrentPrincipal, Roles } from '../auth/auth.decorators';
 import type { AuthenticatedPrincipal } from '../auth/auth.types';
 import { AdminService } from './admin.service';
 import type { UsageHttpQuery } from '../usage/usage-query.service';
+import { AppError } from '../common/errors';
 
 @Controller('api/admin')
 @UseGuards(KeycloakJwtGuard, RolesGuard)
@@ -95,9 +96,14 @@ export class AdminController {
     return this.admin.scanProvider(body.providerId ?? '', actor, req.id);
   }
 
+  @Get('model-scans/:id')
+  modelScan(@Param('id') id: string) {
+    return this.admin.getModelScan(id);
+  }
+
   @Get('discovered-models')
-  discovered(@Query('providerId') providerId?: string) {
-    return this.admin.listDiscovered(providerId);
+  discovered(@Query('providerId') providerId?: string, @Query('available') available?: string) {
+    return this.admin.listDiscovered(providerId, parseAvailability(available));
   }
 
   @Get('models')
@@ -261,4 +267,11 @@ export class AdminController {
   audit(@Query('limit', new ParseIntPipe({ optional: true })) limit?: number) {
     return this.admin.listAudit(limit);
   }
+}
+
+function parseAvailability(value?: string): boolean | 'all' {
+  if (value === undefined || value === '' || value === 'true') return true;
+  if (value === 'false') return false;
+  if (value === 'all') return 'all';
+  throw new AppError('invalid_request_error', 400, 'The available filter is invalid.', 'available');
 }

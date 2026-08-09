@@ -71,6 +71,23 @@ function Test-TrustedProxyCidrs {
     }
 }
 
+function Test-SessionTimeouts {
+    param(
+        [Parameter(Mandatory)][string]$IdleSeconds,
+        [Parameter(Mandatory)][string]$MaxSeconds
+    )
+
+    $idle = 0L
+    $maximum = 0L
+    if (-not [long]::TryParse($IdleSeconds, [ref]$idle) -or $idle -le 0 -or
+        -not [long]::TryParse($MaxSeconds, [ref]$maximum) -or $maximum -le 0) {
+        Stop-WithError 'AUTH_SESSION_IDLE_SECONDS and AUTH_SESSION_MAX_SECONDS must be positive integers.'
+    }
+    if ($idle -gt $maximum) {
+        Stop-WithError 'AUTH_SESSION_IDLE_SECONDS must not exceed AUTH_SESSION_MAX_SECONDS.'
+    }
+}
+
 function Get-EnvironmentSettings {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -151,6 +168,12 @@ function Test-ExistingEnvironment {
 
     Test-PublicBaseUrl -Value $settings['PUBLIC_BASE_URL']
     Test-TrustedProxyCidrs -Value $settings['TRUSTED_PROXY_CIDRS']
+    if ($settings.ContainsKey('AUTH_SESSION_IDLE_SECONDS') -or
+        $settings.ContainsKey('AUTH_SESSION_MAX_SECONDS')) {
+        Test-SessionTimeouts `
+            -IdleSeconds $settings['AUTH_SESSION_IDLE_SECONDS'] `
+            -MaxSeconds $settings['AUTH_SESSION_MAX_SECONDS']
+    }
     if ($settings['INITIAL_ADMIN_EMAIL'] -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') {
         Stop-WithError "INITIAL_ADMIN_EMAIL is not a valid email address."
     }

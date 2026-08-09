@@ -186,7 +186,7 @@ describe('admin resource deletion', () => {
         select: expect.objectContaining({
           _count: {
             select: {
-              discoveredModels: true,
+              discoveredModels: { where: { available: true } },
               publishedModels: { where: { deletedAt: null } },
             },
           },

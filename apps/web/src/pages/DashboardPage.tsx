@@ -17,7 +17,7 @@ import { EmptyState, ErrorState, PageSkeleton } from '@/components/AsyncState';
 import { PageIntro } from '@/components/PageIntro';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatCompact, formatNumber, formatUsd } from '@/lib/format';
-import type { DashboardData, Identity, RankedUsage, UsageResponse } from '@/types';
+import type { DashboardData, Identity, RankedUsage } from '@/types';
 
 const emptyDashboard: DashboardData = {
   summary: {
@@ -36,14 +36,6 @@ const emptyDashboard: DashboardData = {
   topApiKeys: [],
 };
 
-function normalizePersonalDashboard(payload: UsageResponse): DashboardData {
-  return {
-    ...emptyDashboard,
-    summary: { ...emptyDashboard.summary, ...payload.summary },
-    series: payload.series ?? [],
-  };
-}
-
 export function DashboardPage() {
   const { data: identity } = useGetIdentity<Identity>();
   const { locale, tr } = useAppSettings();
@@ -51,12 +43,7 @@ export function DashboardPage() {
   const dashboard = useApiResource(
     async (signal) => {
       if (isAdmin) return apiClient.get<DashboardData>(endpoints.dashboard, undefined, signal);
-      const personal = await apiClient.get<UsageResponse>(
-        endpoints.myUsage,
-        { summary: true, series: true, range: '30d' },
-        signal,
-      );
-      return normalizePersonalDashboard(personal);
+      return apiClient.get<DashboardData>(endpoints.myDashboard, undefined, signal);
     },
     [isAdmin],
   );

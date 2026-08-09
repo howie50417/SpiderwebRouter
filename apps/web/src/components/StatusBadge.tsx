@@ -8,6 +8,7 @@ const statusMap: Record<string, { color: string; label: string }> = {
   SUCCEEDED: { color: 'success', label: 'Succeeded' },
   FAILED: { color: 'error', label: 'Failed' },
   PENDING: { color: 'processing', label: 'Pending' },
+  RUNNING: { color: 'processing', label: 'Running' },
   CANCELLED: { color: 'default', label: 'Cancelled' },
 };
 

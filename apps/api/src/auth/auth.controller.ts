@@ -6,6 +6,7 @@ import { AppError } from '../common/errors';
 import { CurrentPrincipal } from './auth.decorators';
 import type { AuthenticatedPrincipal } from './auth.types';
 import { KeycloakJwtGuard } from './keycloak-jwt.guard';
+import { sanitizeReturnTo } from './return-to';
 import { parseCookies, SessionService } from './session.service';
 
 @Controller('auth')
@@ -15,14 +16,21 @@ export class AuthController {
   constructor(private readonly sessions: SessionService) {}
 
   @Get('login')
-  async login(@Res() reply: FastifyReply): Promise<void> {
+  async login(
+    @Query('returnTo') requestedReturnTo: string | undefined,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
     if (!this.config.oidcIssuerUrl)
       throw new AppError('provider_unavailable', 503, 'Authentication service is unavailable.');
     const state = randomBytes(24).toString('base64url');
     const nonce = randomBytes(24).toString('base64url');
     const verifier = randomBytes(48).toString('base64url');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
-    await this.sessions.createLoginFlow(state, { verifier, nonce });
+    await this.sessions.createLoginFlow(state, {
+      verifier,
+      nonce,
+      returnTo: sanitizeReturnTo(requestedReturnTo),
+    });
     reply.header('set-cookie', oidcStateCookie(state, this.config.publicBaseUrl));
     const url = new URL(`${this.config.oidcIssuerUrl}/protocol/openid-connect/auth`);
     url.search = new URLSearchParams({
@@ -82,21 +90,25 @@ export class AuthController {
     if (typeof tokens.access_token !== 'string') throw new AppError('authentication_error', 401);
     const expiresIn = Number(tokens.expires_in ?? 300);
     const refreshExpiresIn = Number(tokens.refresh_expires_in ?? expiresIn);
+    const now = Date.now();
     const sessionId = await this.sessions.createSession({
       accessToken: tokens.access_token,
       refreshToken: typeof tokens.refresh_token === 'string' ? tokens.refresh_token : undefined,
       idToken: typeof tokens.id_token === 'string' ? tokens.id_token : undefined,
-      expiresAt: Date.now() + Math.max(60, expiresIn) * 1000,
-      refreshExpiresAt: Date.now() + Math.max(60, refreshExpiresIn) * 1000,
+      expiresAt: now + Math.max(60, expiresIn) * 1000,
+      refreshExpiresAt: now + Math.max(60, refreshExpiresIn) * 1000,
+      absoluteExpiresAt: now + this.config.authSessionMaxSeconds * 1000,
     });
     reply.headers({
       'set-cookie': [
         clearOidcStateCookie(this.config.publicBaseUrl),
-        sessionCookie(sessionId, this.config.publicBaseUrl),
+        sessionCookie(sessionId, this.config.publicBaseUrl, this.config.authSessionMaxSeconds),
       ],
       'cache-control': 'no-store',
     });
-    await reply.code(302).redirect(`${this.config.publicBaseUrl}/`);
+    await reply
+      .code(302)
+      .redirect(`${this.config.publicBaseUrl}${sanitizeReturnTo(flow.returnTo)}`);
   }
 
   @Get('logout')
@@ -135,8 +147,8 @@ function clearOidcStateCookie(baseUrl: string): string {
   return `swr_oidc_state=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0${cookieSecurity(baseUrl)}`;
 }
 
-function sessionCookie(value: string, baseUrl: string): string {
-  return `swr_session=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${cookieSecurity(baseUrl)}`;
+function sessionCookie(value: string, baseUrl: string, maxAgeSeconds: number): string {
+  return `swr_session=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${cookieSecurity(baseUrl)}`;
 }
 
 function clearSessionCookie(baseUrl: string): string {

@@ -8,17 +8,25 @@ import {
 type JsonObject = Record<string, unknown>;
 
 export interface CapabilityEvidence {
-  source: 'upstream_metadata' | 'router_emulation';
+  source: 'upstream_metadata' | 'router_emulation' | 'official_catalog';
   path: string;
   state: ScannedCapabilityState;
   emulated?: true;
   via?: 'chat';
+  sourceUrl?: string;
+  catalogRevision?: string;
 }
 
 export interface ModelCapabilityDetection {
   capabilities: ScannedModelCapabilities;
   evidence: Partial<Record<ModelCapabilityKey, CapabilityEvidence[]>>;
   supportedThinkingLevels?: string[];
+  parameterSupport?: { temperature: boolean | 'unconfirmed' };
+  officialProfile?: {
+    id: string;
+    sourceUrl: string;
+    catalogRevision: string;
+  };
 }
 
 interface CandidateNode {

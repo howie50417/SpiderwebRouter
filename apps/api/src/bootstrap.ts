@@ -5,7 +5,7 @@ import { appLogger } from './common/logger';
 
 type JsonObject = Record<string, unknown>;
 
-async function bootstrap(): Promise<void> {
+export async function bootstrap(): Promise<void> {
   const config = loadRuntimeConfig({ refresh: true });
   const adminEmail = (process.env.INITIAL_ADMIN_EMAIL ?? '').trim().toLowerCase();
   const adminPassword = readSecret('INITIAL_ADMIN_PASSWORD');
@@ -28,7 +28,13 @@ async function bootstrap(): Promise<void> {
     keycloakAdminUsername,
     keycloakAdminPassword,
   );
-  await ensureRealm(config.keycloakBaseUrl, realm, adminToken);
+  await ensureRealm(
+    config.keycloakBaseUrl,
+    realm,
+    adminToken,
+    config.authSessionIdleSeconds,
+    config.authSessionMaxSeconds,
+  );
   await ensureRealmRole(config.keycloakBaseUrl, realm, 'USER', adminToken);
   await ensureRealmRole(config.keycloakBaseUrl, realm, 'ADMIN', adminToken);
   const superAdminRole = await ensureRealmRole(
@@ -96,23 +102,48 @@ async function keycloakAdminToken(
   return body.access_token;
 }
 
-async function ensureRealm(base: string, realm: string, token: string): Promise<void> {
-  const current = await keycloakRequest(base, `/admin/realms/${encodeURIComponent(realm)}`, token);
+export async function ensureRealm(
+  base: string,
+  realm: string,
+  token: string,
+  sessionIdleSeconds: number,
+  sessionMaxSeconds: number,
+): Promise<void> {
+  const path = `/admin/realms/${encodeURIComponent(realm)}`;
+  const current = await keycloakRequest(base, path, token);
+  const sessionSettings: JsonObject = {
+    enabled: true,
+    registrationAllowed: false,
+    loginWithEmailAllowed: true,
+    duplicateEmailsAllowed: false,
+    resetPasswordAllowed: true,
+    rememberMe: true,
+    accessTokenLifespan: 300,
+    ssoSessionIdleTimeout: sessionIdleSeconds,
+    ssoSessionMaxLifespan: sessionMaxSeconds,
+    clientSessionIdleTimeout: sessionIdleSeconds,
+    clientSessionMaxLifespan: sessionMaxSeconds,
+  };
   if (current.status === 404) {
+    await current.body?.cancel();
     await expectSuccess(
       await keycloakRequest(base, '/admin/realms', token, 'POST', {
         realm,
-        enabled: true,
-        registrationAllowed: false,
-        loginWithEmailAllowed: true,
-        duplicateEmailsAllowed: false,
-        resetPasswordAllowed: true,
-        rememberMe: true,
+        ...sessionSettings,
       }),
       'create realm',
     );
   } else {
     await expectSuccess(current, 'read realm');
+    const existing = (await current.json()) as JsonObject;
+    await expectSuccess(
+      await keycloakRequest(base, path, token, 'PUT', {
+        ...existing,
+        ...sessionSettings,
+        realm,
+      }),
+      'update realm session settings',
+    );
   }
 }
 
@@ -272,7 +303,9 @@ async function expectSuccess(response: Response, action: string): Promise<void> 
   throw new Error(`Keycloak Admin API failed to ${action} (HTTP ${response.status})`);
 }
 
-bootstrap().catch((error: unknown) => {
-  appLogger.fatal({ err: error }, 'bootstrap_failed');
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  bootstrap().catch((error: unknown) => {
+    appLogger.fatal({ err: error }, 'bootstrap_failed');
+    process.exitCode = 1;
+  });
+}

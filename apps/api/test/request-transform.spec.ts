@@ -14,6 +14,8 @@ function model(overrides: Partial<PublishedModel> = {}): PublishedModel {
     promptMode: 'NONE',
     systemPrompt: null,
     thinkingLevel: 'PROVIDER_DEFAULT',
+    thinkingControlMode: 'FIXED',
+    supportedThinkingLevels: [],
     maxRetries: 0,
     inputPricePerM: {} as PublishedModel['inputPricePerM'],
     outputPricePerM: {} as PublishedModel['outputPricePerM'],

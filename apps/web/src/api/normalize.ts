@@ -66,13 +66,7 @@ function normalizeDiscoveredCapabilities(value: unknown): UnknownRecord {
 
 function normalizeDiscoveredMetadata(value: unknown): UnknownRecord {
   const source = record(value);
-  const validThinkingLevels = new Set<string>(thinkingLevels);
-  const supportedThinkingLevels = Array.isArray(source.supportedThinkingLevels)
-    ? source.supportedThinkingLevels.filter(
-        (level): level is ThinkingLevel =>
-          typeof level === 'string' && validThinkingLevels.has(level),
-      )
-    : [];
+  const supportedThinkingLevels = normalizeThinkingLevels(source.supportedThinkingLevels);
   return {
     ...source,
     ...(supportedThinkingLevels.length ? { supportedThinkingLevels } : {}),
@@ -97,11 +91,15 @@ function inferCapabilitySource(value: unknown, metadata: UnknownRecord): string 
   const hasRouter = evidence.some((item) =>
     stringValue(item.source).toLowerCase().includes('router_emulation'),
   );
-  const sources = [hasMetadata, hasStatus, hasRouter].filter(Boolean).length;
+  const hasOfficialCatalog = evidence.some((item) =>
+    stringValue(item.source).toLowerCase().includes('official_catalog'),
+  );
+  const sources = [hasMetadata, hasStatus, hasRouter, hasOfficialCatalog].filter(Boolean).length;
   if (sources > 1) return 'MIXED';
   if (hasStatus) return 'PROVIDER_STATUS';
   if (hasMetadata) return 'METADATA';
   if (hasRouter) return 'ROUTER_EMULATION';
+  if (hasOfficialCatalog) return 'OFFICIAL_CATALOG';
   return 'UNKNOWN';
 }
 
@@ -172,7 +170,21 @@ function normalizePublishedModel(value: unknown): unknown {
       '0',
     ),
     grantCount: source.grantCount ?? count.grants ?? 0,
+    thinkingControlMode: source.thinkingControlMode ?? 'FIXED',
+    supportedThinkingLevels: normalizeThinkingLevels(source.supportedThinkingLevels),
   };
+}
+
+function normalizeThinkingLevels(value: unknown): ThinkingLevel[] {
+  const validThinkingLevels = new Set<string>(thinkingLevels);
+  return Array.isArray(value)
+    ? value.filter(
+        (level): level is ThinkingLevel =>
+          typeof level === 'string' &&
+          level !== 'PROVIDER_DEFAULT' &&
+          validThinkingLevels.has(level),
+      )
+    : [];
 }
 
 function normalizeDiscoveredModel(value: unknown): unknown {
@@ -228,10 +240,18 @@ function normalizeApiKey(value: unknown): unknown {
 
 function normalizeModelOption(value: unknown): unknown {
   const source = record(value);
+  const parameterSupport = record(source.parameterSupport);
+  const rawTemperature = parameterSupport.temperature;
   return {
     ...source,
     name: source.name ?? source.alias ?? source.displayName ?? '',
     capabilities: normalizeCapabilities(source.capabilities),
+    thinkingControlMode: source.thinkingControlMode ?? 'FIXED',
+    supportedThinkingLevels: normalizeThinkingLevels(source.supportedThinkingLevels),
+    parameterSupport: {
+      temperature:
+        rawTemperature === true || rawTemperature === false ? rawTemperature : 'unconfirmed',
+    },
   };
 }
 
@@ -403,7 +423,7 @@ function normalizeAudit(value: unknown): unknown {
 
 export function normalizeApiPayload(path: string, payload: unknown): unknown {
   if (path === '/me') return normalizeIdentity(payload);
-  if (path === '/admin/dashboard') return normalizeDashboard(payload);
+  if (path === '/admin/dashboard' || path === '/me/dashboard') return normalizeDashboard(payload);
   if (path.startsWith('/admin/providers')) {
     return mapCollection(payload, normalizeProvider);
   }

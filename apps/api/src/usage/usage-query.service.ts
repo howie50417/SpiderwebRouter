@@ -186,11 +186,28 @@ export class UsageQueryService {
     ].join('\n');
   }
 
-  async dashboard() {
+  async dashboard(fixedUserId?: string) {
     const now = new Date();
     const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29));
-    const query: NormalizedUsageQuery = { page: 1, pageSize: 1, from };
-    const where = buildSqlWhere(query);
+    const toExclusive = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+    );
+    const query: NormalizedUsageQuery = { page: 1, pageSize: 1, from, toExclusive };
+    const where = buildSqlWhere(query, fixedUserId);
+    const topUsersQuery: Promise<RankingRow[]> = fixedUserId
+      ? Promise.resolve([])
+      : this.ranking(
+          Prisma.sql`COALESCE(u."email", 'Unknown')`,
+          where,
+          Prisma.sql`JOIN "app"."users" u ON u."id" = r."user_id"`,
+        );
+    const topApiKeysQuery: Promise<RankingRow[]> = fixedUserId
+      ? Promise.resolve([])
+      : this.ranking(
+          Prisma.sql`COALESCE(k."name", 'Console session')`,
+          where,
+          Prisma.sql`LEFT JOIN "app"."api_keys" k ON k."id" = r."api_key_id"`,
+        );
     const [summaryRows, seriesRows, topModels, topUsers, topApiKeys] = await Promise.all([
       this.prisma.$queryRaw<SummaryRow[]>(Prisma.sql`
         SELECT
@@ -217,16 +234,8 @@ export class UsageQueryService {
         ORDER BY 1 ASC
       `),
       this.ranking(Prisma.sql`r."model_alias"`, where),
-      this.ranking(
-        Prisma.sql`COALESCE(u."email", 'Unknown')`,
-        where,
-        Prisma.sql`JOIN "app"."users" u ON u."id" = r."user_id"`,
-      ),
-      this.ranking(
-        Prisma.sql`COALESCE(k."name", 'Console session')`,
-        where,
-        Prisma.sql`LEFT JOIN "app"."api_keys" k ON k."id" = r."api_key_id"`,
-      ),
+      topUsersQuery,
+      topApiKeysQuery,
     ]);
 
     return {

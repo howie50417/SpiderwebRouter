@@ -4,6 +4,7 @@ import {
   modelDeletionNotice,
   promptModePresentation,
   selectableThinkingLevels,
+  thinkingLevelToWire,
 } from '@/lib/modelForm';
 
 describe('modelDeletionNotice', () => {
@@ -61,5 +62,14 @@ describe('promptModePresentation', () => {
         (item) => item.labelZh.length > 0 && item.descriptionZh.length > 0,
       ),
     ).toBe(true);
+  });
+});
+
+describe('thinkingLevelToWire', () => {
+  it('uses the public OpenAI-compatible spelling for off and confirmed efforts', () => {
+    expect(thinkingLevelToWire('OFF')).toBe('none');
+    expect(thinkingLevelToWire('XHIGH')).toBe('xhigh');
+    expect(thinkingLevelToWire('MAX')).toBe('max');
+    expect(thinkingLevelToWire('PROVIDER_DEFAULT')).toBeUndefined();
   });
 });

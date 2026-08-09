@@ -72,6 +72,11 @@ export class MeController {
     return this.me.usage(principal, query);
   }
 
+  @Get('dashboard')
+  dashboard(@CurrentPrincipal() principal: AuthenticatedPrincipal) {
+    return this.me.dashboard(principal);
+  }
+
   @Get('usage.csv')
   async usageCsv(
     @CurrentPrincipal() principal: AuthenticatedPrincipal,

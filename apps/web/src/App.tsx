@@ -9,10 +9,11 @@ import { App as AntApp, ConfigProvider, theme } from 'antd';
 import enUS from 'antd/locale/en_US';
 import zhTW from 'antd/locale/zh_TW';
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { dataProvider } from '@/api/dataProvider';
 import { authProvider } from '@/auth/provider';
+import { consoleLoginHref, sanitizeReturnTo } from '@/auth/returnTo';
 import { AdminGuard } from '@/components/AdminGuard';
 import { AppLayout } from '@/components/AppLayout';
 import { useAppSettings } from '@/context/AppSettings';
@@ -51,6 +52,18 @@ const ForbiddenPage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import('@/pages/SystemPages').then((module) => ({ default: module.NotFoundPage })),
 );
+
+function ProtectedLoginRedirect() {
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  return <Navigate to={consoleLoginHref(returnTo)} replace />;
+}
+
+function SignedInRedirect() {
+  const location = useLocation();
+  const returnTo = sanitizeReturnTo(new URLSearchParams(location.search).get('returnTo'));
+  return <Navigate to={returnTo} replace />;
+}
 
 function ConsoleApp() {
   const { colorMode, locale, reducedMotion } = useAppSettings();
@@ -113,13 +126,13 @@ function ConsoleApp() {
                   path="/login"
                   element={
                     <Authenticated key="login" fallback={<LoginPage />}>
-                      <Navigate to="/" replace />
+                      <SignedInRedirect />
                     </Authenticated>
                   }
                 />
                 <Route
                   element={
-                    <Authenticated key="protected" fallback={<Navigate to="/login" replace />}>
+                    <Authenticated key="protected" fallback={<ProtectedLoginRedirect />}>
                       <AppLayout />
                     </Authenticated>
                   }

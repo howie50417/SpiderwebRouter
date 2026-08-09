@@ -25,11 +25,16 @@ function createHarness() {
     },
     publishedModel: {
       create: publishedModelCreate,
-      findFirst: vi.fn().mockResolvedValue({
-        id: '44444444-4444-4444-8444-444444444444',
-        deletedAt: null,
-      }),
+      findFirst: vi.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+        where.upstreamModelId
+          ? null
+          : Promise.resolve({
+              id: '44444444-4444-4444-8444-444444444444',
+              deletedAt: null,
+            }),
+      ),
     },
+    discoveredModel: { findUnique: vi.fn().mockResolvedValue(null) },
     userModelGrant: { findFirst: vi.fn().mockResolvedValue(null), upsert: grantUpsert },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
     $transaction: vi.fn(),

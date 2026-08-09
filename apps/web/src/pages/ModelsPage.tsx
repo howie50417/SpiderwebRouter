@@ -29,7 +29,7 @@ import {
   type ThinkingLevel,
 } from '@spiderwebrouter/contracts';
 import { Alert, App, Button, Popconfirm, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
-import { type Key, useRef, useState } from 'react';
+import { type Key, useEffect, useRef, useState } from 'react';
 
 import { apiClient, getSafeError } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
@@ -40,6 +40,7 @@ import { EnabledBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatDateTime, formatUsd } from '@/lib/format';
 import { modelAliasPattern } from '@/lib/modelAlias';
+import { pollModelScan, type ModelScanJob } from '@/lib/modelScan';
 import {
   modelDeletionNotice,
   promptModePresentation,
@@ -52,6 +53,7 @@ import type {
   ProviderRecord,
   PublishedModel,
   PublishedModelCapabilities,
+  ThinkingControlMode,
 } from '@/types';
 
 const capabilityKeys: (keyof ModelCapabilities)[] = [
@@ -74,6 +76,8 @@ interface ModelFormValues {
   promptMode: PromptMode;
   systemPrompt?: string;
   thinkingLevel: ThinkingLevel;
+  thinkingControlMode: ThinkingControlMode;
+  supportedThinkingLevels: ThinkingLevel[];
   maxRetries: number;
   inputPriceUsdPerMillion: number;
   outputPriceUsdPerMillion: number;
@@ -131,6 +135,7 @@ export function ModelsPage() {
   const publishedRef = useRef<ActionType | undefined>(undefined);
   const candidatesRef = useRef<ActionType | undefined>(undefined);
   const modelFormRef = useRef<ProFormInstance<ModelFormValues> | undefined>(undefined);
+  const scanAbortRef = useRef<AbortController | undefined>(undefined);
   const { message } = App.useApp();
   const { locale, tr } = useAppSettings();
   const [activeTab, setActiveTab] = useState('published');
@@ -140,13 +145,30 @@ export function ModelsPage() {
   const [selectedCandidateRows, setSelectedCandidateRows] = useState<DiscoveredModel[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [activeProviderId, setActiveProviderId] = useState<string>();
   const [deletingId, setDeletingId] = useState<string>();
   const providers = useApiResource(
     (signal) =>
       apiClient
-        .list<ProviderRecord>(endpoints.providers, { pageSize: 200, enabled: true })
+        .list<ProviderRecord>(endpoints.providers, { pageSize: 200 })
         .then((result) => result.data),
     [],
+  );
+
+  useEffect(() => {
+    const available = providers.data ?? [];
+    if (!available.length) {
+      setActiveProviderId(undefined);
+      return;
+    }
+    if (activeProviderId && available.some((provider) => provider.id === activeProviderId)) return;
+    setActiveProviderId(available.find((provider) => provider.enabled)?.id ?? available.at(0)?.id);
+  }, [activeProviderId, providers.data]);
+
+  useEffect(() => () => scanAbortRef.current?.abort(), []);
+
+  const activeProvider = (providers.data ?? []).find(
+    (provider) => provider.id === activeProviderId,
   );
   const discoveredModels = useApiResource(
     (signal) =>
@@ -161,24 +183,45 @@ export function ModelsPage() {
     message.error(`${error.message}${error.requestId ? ` (${error.requestId})` : ''}`);
   };
 
-  const scanAll = async () => {
+  const scanProvider = async (provider: ProviderRecord) => {
+    scanAbortRef.current?.abort();
+    const controller = new AbortController();
+    scanAbortRef.current = controller;
     setScanning(true);
     try {
-      const activeProviders = (providers.data ?? []).filter((provider) => provider.enabled);
-      const results = await Promise.allSettled(
-        activeProviders.map((provider) => apiClient.post(endpoints.providerScan(provider.id))),
-      );
-      const failed = results.find((result) => result.status === 'rejected');
-      if (failed?.status === 'rejected') throw failed.reason;
-      message.success(tr('模型掃描已排入工作佇列', 'Model scan has been queued'));
+      const queued = await apiClient.post<{ jobId: string }>(endpoints.providerScan(provider.id));
       setActiveTab('candidates');
-      window.setTimeout(() => {
-        candidatesRef.current?.reload();
-        discoveredModels.refresh();
-      }, 800);
+      message.info(
+        tr(`正在掃描來源「${provider.name}」…`, `Scanning provider “${provider.name}”…`),
+      );
+      const job = await pollModelScan({
+        jobId: queued.jobId,
+        load: (jobId) =>
+          apiClient.get<ModelScanJob>(endpoints.modelScanJob(jobId), undefined, controller.signal),
+      });
+      if (job.status === 'FAILED') {
+        message.error(
+          tr(
+            `來源「${provider.name}」掃描失敗，請使用追蹤日誌排查。`,
+            `Scanning “${provider.name}” failed. Use the request logs to investigate.`,
+          ),
+        );
+        return;
+      }
+      message.success(
+        tr(
+          `來源「${provider.name}」掃描完成，共發現 ${job.discoveredCount} 個模型。`,
+          `Scanning “${provider.name}” completed with ${job.discoveredCount} models.`,
+        ),
+      );
+      candidatesRef.current?.reload();
+      discoveredModels.refresh();
+      providers.refresh();
     } catch (error) {
+      if (controller.signal.aborted) return;
       notifyError(error);
     } finally {
+      if (scanAbortRef.current === controller) scanAbortRef.current = undefined;
       setScanning(false);
     }
   };
@@ -200,6 +243,8 @@ export function ModelsPage() {
           promptMode: 'NONE',
           systemPrompt: null,
           thinkingLevel: 'PROVIDER_DEFAULT',
+          thinkingControlMode: 'FIXED',
+          supportedThinkingLevels: candidate.metadata.supportedThinkingLevels ?? [],
           maxRetries: 0,
           inputPriceUsdPerMillion: '0',
           outputPriceUsdPerMillion: '0',
@@ -308,6 +353,17 @@ export function ModelsPage() {
       valueType: 'select',
       valueEnum: Object.fromEntries(thinkingLevels.map((level) => [level, level])),
       width: 150,
+      render: (_, row) =>
+        row.thinkingControlMode === 'USER_SELECTABLE' ? (
+          <Space direction="vertical" size={0}>
+            <Tag color="blue">{tr('使用者自行設定', 'User selectable')}</Tag>
+            <Typography.Text type="secondary">
+              {row.supportedThinkingLevels.join(', ') || '—'}
+            </Typography.Text>
+          </Space>
+        ) : (
+          <Tag>{tr(`伺服器固定 ${row.thinkingLevel}`, `Server fixed ${row.thinkingLevel}`)}</Tag>
+        ),
     },
     {
       title: 'Retry',
@@ -434,6 +490,7 @@ export function ModelsPage() {
         METADATA: { text: tr('來源中繼資料', 'Provider metadata') },
         PROVIDER_STATUS: { text: tr('來源執行狀態', 'Provider runtime status') },
         ROUTER_EMULATION: { text: tr('Router 轉接能力', 'Router emulation') },
+        OFFICIAL_CATALOG: { text: tr('OpenAI 官方目錄', 'OpenAI official catalog') },
         MIXED: { text: tr('多種來源', 'Mixed evidence') },
         ADMIN_CONFIRMED: { text: tr('管理員確認', 'Admin confirmed') },
         UNKNOWN: { text: tr('未知', 'Unknown') },
@@ -446,7 +503,7 @@ export function ModelsPage() {
       valueType: 'dateTime',
       search: false,
       width: 180,
-      renderText: (value) => formatDateTime(value, locale),
+      render: (_, row) => formatDateTime(row.lastSeenAt, locale),
     },
     {
       title: tr('狀態', 'Status'),
@@ -474,21 +531,16 @@ export function ModelsPage() {
           'Scanning reads model metadata only and never sends billable inference. Green capabilities are preselected; a yellow question mark means the provider did not supply enough evidence and needs your review.',
         )}
         actions={
-          <>
-            <Button icon={<RadarChartOutlined />} loading={scanning} onClick={() => void scanAll()}>
-              {tr('掃描全部來源', 'Scan all providers')}
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setEditing(undefined);
-                setDrawerOpen(true);
-              }}
-            >
-              {tr('建立自訂模型', 'Create custom model')}
-            </Button>
-          </>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditing(undefined);
+              setDrawerOpen(true);
+            }}
+          >
+            {tr('建立自訂模型', 'Create custom model')}
+          </Button>
         }
       />
 
@@ -546,64 +598,121 @@ export function ModelsPage() {
             key: 'candidates',
             label: tr('掃描候選', 'Scan candidates'),
             children: (
-              <ProTable<DiscoveredModel>
-                actionRef={candidatesRef}
-                rowKey="id"
-                columns={candidateColumns}
-                cardBordered
-                scroll={{ x: 980 }}
-                rowSelection={{
-                  selectedRowKeys: selectedCandidates,
-                  getCheckboxProps: (row) => ({ disabled: row.published }),
-                  onChange: (keys, rows) => {
-                    setSelectedCandidates(keys);
-                    setSelectedCandidateRows(rows);
-                  },
-                }}
-                tableAlertRender={({ selectedRowKeys }) => (
-                  <Typography.Text>
-                    {tr(
-                      `已選擇 ${selectedRowKeys.length} 個模型`,
-                      `${selectedRowKeys.length} models selected`,
-                    )}
-                  </Typography.Text>
-                )}
-                tableAlertOptionRender={() => (
-                  <Button
-                    type="primary"
-                    size="small"
-                    loading={publishing}
-                    onClick={() => void publishSelected()}
-                  >
-                    {tr('加入模型目錄', 'Add to catalog')}
-                  </Button>
-                )}
-                search={{ labelWidth: 'auto', defaultCollapsed: false }}
-                pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-                request={async (params) => {
-                  try {
-                    const result = await apiClient.list<DiscoveredModel>(
-                      endpoints.modelScanCandidates,
-                      {
-                        page: params.current,
-                        pageSize: params.pageSize,
-                        search:
-                          typeof params.upstreamModelId === 'string'
-                            ? params.upstreamModelId
-                            : undefined,
-                        capabilitySource:
-                          typeof params.capabilitySource === 'string'
-                            ? params.capabilitySource
-                            : undefined,
-                      },
-                    );
-                    return { ...result, success: true };
-                  } catch (error) {
-                    notifyError(error);
-                    return { data: [], total: 0, success: false };
+              <>
+                <Tabs
+                  type="card"
+                  activeKey={activeProviderId}
+                  onChange={(providerId) => {
+                    setActiveProviderId(providerId);
+                    setSelectedCandidates([]);
+                    setSelectedCandidateRows([]);
+                  }}
+                  items={(providers.data ?? []).map((provider) => ({
+                    key: provider.id,
+                    label: (
+                      <Space size={6}>
+                        {provider.name}
+                        {!provider.enabled ? <Tag>{tr('停用', 'Disabled')}</Tag> : null}
+                      </Space>
+                    ),
+                  }))}
+                  tabBarExtraContent={
+                    activeProvider ? (
+                      <Tooltip
+                        title={
+                          activeProvider.enabled
+                            ? undefined
+                            : tr('請先啟用此服務來源', 'Enable this provider before scanning')
+                        }
+                      >
+                        <Button
+                          icon={<RadarChartOutlined />}
+                          loading={scanning}
+                          disabled={!activeProvider.enabled}
+                          onClick={() => void scanProvider(activeProvider)}
+                        >
+                          {tr(
+                            `掃描此來源：${activeProvider.name}`,
+                            `Scan this provider: ${activeProvider.name}`,
+                          )}
+                        </Button>
+                      </Tooltip>
+                    ) : null
                   }
-                }}
-              />
+                />
+                {activeProvider ? (
+                  <ProTable<DiscoveredModel>
+                    key={activeProvider.id}
+                    actionRef={candidatesRef}
+                    rowKey="id"
+                    columns={candidateColumns}
+                    cardBordered
+                    scroll={{ x: 980 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedCandidates,
+                      getCheckboxProps: (row) => ({ disabled: row.published }),
+                      onChange: (keys, rows) => {
+                        setSelectedCandidates(keys);
+                        setSelectedCandidateRows(rows);
+                      },
+                    }}
+                    tableAlertRender={({ selectedRowKeys }) => (
+                      <Typography.Text>
+                        {tr(
+                          `已選擇 ${selectedRowKeys.length} 個模型`,
+                          `${selectedRowKeys.length} models selected`,
+                        )}
+                      </Typography.Text>
+                    )}
+                    tableAlertOptionRender={() => (
+                      <Button
+                        type="primary"
+                        size="small"
+                        loading={publishing}
+                        onClick={() => void publishSelected()}
+                      >
+                        {tr('加入模型目錄', 'Add to catalog')}
+                      </Button>
+                    )}
+                    search={{ labelWidth: 'auto', defaultCollapsed: false }}
+                    pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+                    request={async (params) => {
+                      try {
+                        const result = await apiClient.list<DiscoveredModel>(
+                          endpoints.modelScanCandidates,
+                          {
+                            page: params.current,
+                            pageSize: params.pageSize,
+                            providerId: activeProvider.id,
+                            available: true,
+                            search:
+                              typeof params.upstreamModelId === 'string'
+                                ? params.upstreamModelId
+                                : undefined,
+                            capabilitySource:
+                              typeof params.capabilitySource === 'string'
+                                ? params.capabilitySource
+                                : undefined,
+                          },
+                        );
+                        return { ...result, success: true };
+                      } catch (error) {
+                        notifyError(error);
+                        return { data: [], total: 0, success: false };
+                      }
+                    }}
+                  />
+                ) : (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={tr(
+                      '請先建立服務來源，才能掃描模型。',
+                      'Create a provider before scanning models.',
+                    )}
+                  />
+                )}
+              </>
             ),
           },
         ]}
@@ -632,6 +741,8 @@ export function ModelsPage() {
                 promptMode: editing.promptMode,
                 systemPrompt: editing.systemPrompt ?? undefined,
                 thinkingLevel: editing.thinkingLevel,
+                thinkingControlMode: editing.thinkingControlMode,
+                supportedThinkingLevels: editing.supportedThinkingLevels,
                 maxRetries: editing.maxRetries,
                 inputPriceUsdPerMillion: Number(editing.inputPriceUsdPerMillion),
                 outputPriceUsdPerMillion: Number(editing.outputPriceUsdPerMillion),
@@ -641,6 +752,8 @@ export function ModelsPage() {
                 capabilities: ['chat', 'streaming'],
                 promptMode: 'NONE',
                 thinkingLevel: 'PROVIDER_DEFAULT',
+                thinkingControlMode: 'FIXED',
+                supportedThinkingLevels: [],
                 maxRetries: 0,
                 inputPriceUsdPerMillion: 0,
                 outputPriceUsdPerMillion: 0,
@@ -648,6 +761,16 @@ export function ModelsPage() {
         }
         onFinish={async (values) => {
           try {
+            const discovered = (discoveredModels.data ?? []).find(
+              (candidate) =>
+                candidate.providerId === values.providerId &&
+                candidate.upstreamModelId === values.upstreamModelId,
+            );
+            const supportedThinkingLevels = editing
+              ? (values.supportedThinkingLevels ?? editing.supportedThinkingLevels)
+              : (values.supportedThinkingLevels ??
+                discovered?.metadata.supportedThinkingLevels ??
+                []);
             const payload = {
               ...values,
               capabilities: listToCapabilities(
@@ -655,6 +778,9 @@ export function ModelsPage() {
                 editing?.capabilities.nativeResponses === true,
               ),
               systemPrompt: values.promptMode === 'NONE' ? null : values.systemPrompt,
+              thinkingLevel:
+                values.thinkingControlMode === 'FIXED' ? values.thinkingLevel : 'PROVIDER_DEFAULT',
+              supportedThinkingLevels,
               inputPriceUsdPerMillion: String(values.inputPriceUsdPerMillion ?? 0),
               outputPriceUsdPerMillion: String(values.outputPriceUsdPerMillion ?? 0),
             };
@@ -680,7 +806,14 @@ export function ModelsPage() {
         <ProFormSelect
           name="providerId"
           label={tr('服務來源', 'Provider')}
-          fieldProps={{ loading: providers.loading }}
+          fieldProps={{
+            loading: providers.loading,
+            onChange: () => {
+              modelFormRef.current?.setFieldValue('supportedThinkingLevels', []);
+              modelFormRef.current?.setFieldValue('thinkingLevel', 'PROVIDER_DEFAULT');
+              modelFormRef.current?.setFieldValue('thinkingControlMode', 'FIXED');
+            },
+          }}
           options={(providers.data ?? []).map((provider) => ({
             label: provider.name,
             value: provider.id,
@@ -693,6 +826,13 @@ export function ModelsPage() {
           label={tr('上游模型 ID', 'Upstream model ID')}
           placeholder="model-name"
           disabled={Boolean(editing)}
+          fieldProps={{
+            onChange: () => {
+              modelFormRef.current?.setFieldValue('supportedThinkingLevels', []);
+              modelFormRef.current?.setFieldValue('thinkingLevel', 'PROVIDER_DEFAULT');
+              modelFormRef.current?.setFieldValue('thinkingControlMode', 'FIXED');
+            },
+          }}
           rules={[{ required: true }, { max: 255 }]}
         />
         <ProFormText
@@ -801,52 +941,122 @@ export function ModelsPage() {
             ) : null
           }
         </ProFormDependency>
-        <ProFormDependency name={['providerId', 'upstreamModelId']}>
-          {({ providerId, upstreamModelId }) => {
+        <ProFormSelect
+          name="supportedThinkingLevels"
+          hidden
+          fieldProps={{ mode: 'multiple' }}
+          options={thinkingLevels
+            .filter((level) => level !== 'PROVIDER_DEFAULT')
+            .map((value) => ({ value, label: value }))}
+        />
+        <ProFormDependency name={['providerId', 'upstreamModelId', 'supportedThinkingLevels']}>
+          {({ providerId, upstreamModelId, supportedThinkingLevels }) => {
             const discovered = (discoveredModels.data ?? []).find(
               (candidate) =>
                 candidate.providerId === providerId &&
                 candidate.upstreamModelId === upstreamModelId,
             );
-            const confirmed = new Set(discovered?.metadata.supportedThinkingLevels ?? []);
+            const currentLevels = Array.isArray(supportedThinkingLevels)
+              ? (supportedThinkingLevels as ThinkingLevel[])
+              : [];
+            const candidateLevels = discovered?.metadata.supportedThinkingLevels ?? [];
+            const confirmed = new Set(currentLevels);
             const hasConfirmedLevels = confirmed.size > 0;
             const selectableLevels = selectableThinkingLevels([...confirmed]);
             return (
               <>
                 <ProFormSelect
-                  name="thinkingLevel"
-                  label={tr('伺服器 Thinking 強度', 'Server-controlled thinking')}
-                  options={selectableLevels.map((value) => ({
-                    value,
-                    label:
-                      value === 'PROVIDER_DEFAULT'
-                        ? tr('Provider 預設（建議）', 'Provider default (recommended)')
-                        : confirmed.has(value)
-                          ? tr(`${value}（來源確認）`, `${value} (provider-confirmed)`)
-                          : tr(`${value}（未確認）`, `${value} (unconfirmed)`),
-                  }))}
+                  name="thinkingControlMode"
+                  label={tr('Thinking 控制方式', 'Thinking control')}
+                  options={[
+                    {
+                      value: 'FIXED',
+                      label: tr('伺服器固定', 'Server fixed'),
+                    },
+                    {
+                      value: 'USER_SELECTABLE',
+                      label: tr('開放使用者自行設定', 'User selectable'),
+                      disabled: !hasConfirmedLevels,
+                    },
+                  ]}
                   tooltip={tr(
-                    '此設定不會開放給客戶覆寫。只有來源明確提供的檔位才會標為已確認。',
-                    'Customers cannot override this setting. A level is marked confirmed only when the provider explicitly reports it.',
+                    '固定模式會移除客戶的 Thinking 設定；開放模式只接受來源或官方目錄已確認的檔位。',
+                    'Fixed mode removes client thinking settings. User-selectable mode accepts only levels confirmed by the provider or official catalog.',
                   )}
                   rules={[{ required: true }]}
                 />
-                <Alert
-                  type={hasConfirmedLevels ? 'info' : 'warning'}
-                  showIcon
-                  message={
-                    hasConfirmedLevels
-                      ? tr(
-                          `來源明確回報的 Thinking 檔位：${[...confirmed].join('、')}`,
-                          `Provider-confirmed thinking levels: ${[...confirmed].join(', ')}`,
-                        )
-                      : tr(
-                          '模型清單沒有回報可用的 Thinking 檔位；Provider 預設最安全。其他檔位仍可手動指定，但上游可能忽略或拒絕。',
-                          'The model list did not report supported thinking levels. Provider default is safest; other levels may still be selected manually, but the upstream may ignore or reject them.',
-                        )
+                {discovered &&
+                (candidateLevels.length !== confirmed.size ||
+                  candidateLevels.some((level) => !confirmed.has(level))) ? (
+                  <Button
+                    size="small"
+                    style={{ marginBottom: 16 }}
+                    onClick={() => {
+                      modelFormRef.current?.setFieldValue(
+                        'supportedThinkingLevels',
+                        candidateLevels,
+                      );
+                    }}
+                  >
+                    {tr('套用最新來源／官方確認檔位', 'Apply latest provider/official levels')}
+                  </Button>
+                ) : null}
+                <ProFormDependency name={['thinkingControlMode']}>
+                  {({ thinkingControlMode }) =>
+                    thinkingControlMode === 'USER_SELECTABLE' ? (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message={tr(
+                          `使用者可自行選擇：${[...confirmed].join('、')}`,
+                          `Users may choose: ${[...confirmed].join(', ')}`,
+                        )}
+                        description={tr(
+                          '使用者未指定時採 Provider 預設，不會注入 Thinking。未列出的檔位會在呼叫上游前被拒絕。',
+                          'When omitted, the provider default is used and no thinking value is injected. Unlisted levels are rejected before calling upstream.',
+                        )}
+                        style={{ marginBottom: 16 }}
+                      />
+                    ) : (
+                      <>
+                        <ProFormSelect
+                          name="thinkingLevel"
+                          label={tr('伺服器 Thinking 強度', 'Server-controlled thinking')}
+                          options={selectableLevels.map((value) => ({
+                            value,
+                            label:
+                              value === 'PROVIDER_DEFAULT'
+                                ? tr('Provider 預設（建議）', 'Provider default (recommended)')
+                                : confirmed.has(value)
+                                  ? tr(`${value}（來源確認）`, `${value} (provider-confirmed)`)
+                                  : tr(`${value}（未確認）`, `${value} (unconfirmed)`),
+                          }))}
+                          tooltip={tr(
+                            '客戶傳入的 Thinking 設定會被移除，再由伺服器套用此固定值。',
+                            'Client thinking settings are removed and replaced with this server-controlled value.',
+                          )}
+                          rules={[{ required: true }]}
+                        />
+                        <Alert
+                          type={hasConfirmedLevels ? 'info' : 'warning'}
+                          showIcon
+                          message={
+                            hasConfirmedLevels
+                              ? tr(
+                                  `來源明確回報的 Thinking 檔位：${[...confirmed].join('、')}`,
+                                  `Provider-confirmed thinking levels: ${[...confirmed].join(', ')}`,
+                                )
+                              : tr(
+                                  '模型清單沒有回報 Thinking 檔位；只能使用伺服器固定模式，Provider 預設最安全。',
+                                  'The model list did not report thinking levels. Only server-fixed mode is available, and provider default is safest.',
+                                )
+                          }
+                          style={{ marginBottom: 16 }}
+                        />
+                      </>
+                    )
                   }
-                  style={{ marginBottom: 16 }}
-                />
+                </ProFormDependency>
               </>
             );
           }}

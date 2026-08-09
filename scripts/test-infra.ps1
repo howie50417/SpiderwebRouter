@@ -56,7 +56,10 @@ try {
         }
     }
 
-    Get-Content -Raw 'docker/keycloak/realm-export.json' | ConvertFrom-Json | Out-Null
+    $realm = Get-Content -Raw 'docker/keycloak/realm-export.json' | ConvertFrom-Json
+    Assert-Condition ($realm.accessTokenLifespan -eq 300) 'Keycloak access token is not five minutes'
+    Assert-Condition ($realm.ssoSessionIdleTimeout -eq 604800) 'Keycloak idle session is not seven days'
+    Assert-Condition ($realm.ssoSessionMaxLifespan -eq 2592000) 'Keycloak maximum session is not 30 days'
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'
@@ -98,6 +101,10 @@ try {
     foreach ($serviceName in @('api', 'worker', 'bootstrap')) {
         Assert-Condition ($null -eq $compose.services.$serviceName.PSObject.Properties['build']) "$serviceName unexpectedly defines a duplicate image build"
         Assert-Condition ($compose.services.$serviceName.pull_policy -eq 'never') "$serviceName may pull instead of consuming the local shared image"
+    }
+    foreach ($serviceName in $apiServiceNames) {
+        Assert-Condition ($compose.services.$serviceName.environment.AUTH_SESSION_IDLE_SECONDS -eq '604800') "$serviceName does not use the seven-day idle timeout"
+        Assert-Condition ($compose.services.$serviceName.environment.AUTH_SESSION_MAX_SECONDS -eq '2592000') "$serviceName does not use the 30-day maximum timeout"
     }
 
     foreach ($path in @(

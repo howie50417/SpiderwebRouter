@@ -9,6 +9,7 @@ import {
   detectModelCapabilities,
   type ModelCapabilityDetection,
 } from './model-capability-detection';
+import { enrichWithOpenAIOfficialProfile } from './openai-model-profiles';
 
 type JsonObject = Record<string, unknown>;
 
@@ -91,14 +92,19 @@ export class ProviderAdapterService {
           runtimeStatus && matchesActiveModel(item, runtimeStatus)
             ? prepareUnslothStatus(runtimeStatus)
             : undefined;
-        const detection = detectModelCapabilities(
+        const passiveDetection = detectModelCapabilities(
           matchedStatus ? { ...item, runtimeStatus: matchedStatus } : item,
           {
             emulateResponsesFromChat: provider.type !== 'OPENAI',
           },
         );
+        const upstreamModelId = String(item.id ?? item.name ?? item.model);
+        const detection =
+          provider.type === 'OPENAI'
+            ? enrichWithOpenAIOfficialProfile(passiveDetection, upstreamModelId)
+            : passiveDetection;
         return {
-          upstreamModelId: String(item.id ?? item.name ?? item.model),
+          upstreamModelId,
           displayName: typeof item.name === 'string' ? item.name : undefined,
           capabilities: detection.capabilities,
           metadata: detectionMetadata(
@@ -348,6 +354,8 @@ function detectionMetadata(metadata: JsonObject, detection: ModelCapabilityDetec
     ...(detection.supportedThinkingLevels
       ? { supportedThinkingLevels: detection.supportedThinkingLevels }
       : {}),
+    ...(detection.parameterSupport ? { parameterSupport: detection.parameterSupport } : {}),
+    ...(detection.officialProfile ? { officialProfile: detection.officialProfile } : {}),
   };
 }
 

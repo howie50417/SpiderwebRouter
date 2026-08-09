@@ -285,6 +285,38 @@ describe('provider scan capability enrichment', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('enriches an official OpenAI catalog in one GET without affecting compatible providers', async () => {
+    const officialFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'gpt-5.6-sol' }] })));
+    const [official] = await adapter(officialFetch).scan(provider('OPENAI'));
+    expect(officialFetch).toHaveBeenCalledTimes(1);
+    expect(official?.capabilities).toMatchObject({
+      chat: true,
+      responses: true,
+      embeddings: false,
+      vision: true,
+      reasoning: true,
+      nativeResponses: true,
+    });
+    expect(official?.metadata?.supportedThinkingLevels).toEqual([
+      'OFF',
+      'LOW',
+      'MEDIUM',
+      'HIGH',
+      'XHIGH',
+      'MAX',
+    ]);
+
+    const compatibleFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'gpt-5.6-sol' }] })));
+    const [compatible] = await adapter(compatibleFetch).scan(provider('GENERIC_OPENAI'));
+    expect(compatibleFetch).toHaveBeenCalledTimes(1);
+    expect(compatible?.capabilities.chat).toBe('unconfirmed');
+    expect(compatible?.metadata?.officialProfile).toBeUndefined();
+  });
+
   it('uses nativeResponses rather than the public Responses flag to choose Generic wire API', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [] })));
     const service = adapter(fetch);

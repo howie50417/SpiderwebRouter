@@ -26,13 +26,22 @@ export const thinkingLevels = [
 ] as const;
 export type ThinkingLevel = (typeof thinkingLevels)[number];
 
+export const thinkingControlModes = ['FIXED', 'USER_SELECTABLE'] as const;
+export type ThinkingControlMode = (typeof thinkingControlModes)[number];
+
+export type ParameterSupport = boolean | 'unconfirmed';
+
+export interface ModelParameterSupport {
+  temperature: ParameterSupport;
+}
+
 export const inferenceKinds = ['CHAT', 'RESPONSES', 'EMBEDDINGS'] as const;
 export type InferenceKind = (typeof inferenceKinds)[number];
 
 export const requestSources = ['API', 'PLAYGROUND', 'DOCS'] as const;
 export type RequestSource = (typeof requestSources)[number];
 
-export const requestStatuses = ['PENDING', 'SUCCEEDED', 'FAILED', 'CANCELLED'] as const;
+export const requestStatuses = ['RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'] as const;
 export type RequestStatus = (typeof requestStatuses)[number];
 
 export const publicErrorCodes = [

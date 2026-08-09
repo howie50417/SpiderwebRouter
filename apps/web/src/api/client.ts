@@ -2,6 +2,7 @@ import type { ControlPlaneErrorEnvelope, PublicErrorCode } from '@spiderwebroute
 
 import type { ListQuery, PageResult } from '@/types';
 import { normalizeApiPayload, normalizeRequestPayload } from '@/api/normalize';
+import { handleControlPlaneUnauthorized } from '@/auth/sessionExpiry';
 
 const API_BASE = '/api';
 
@@ -118,6 +119,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
+    if (response.status === 401) handleControlPlaneUnauthorized();
     throw await parseSafeError(response);
   }
 
@@ -242,7 +244,10 @@ async function download(path: string, query?: ListQuery): Promise<Blob> {
   } catch {
     throw new ApiError({ status: 0, code: 'provider_unavailable' });
   }
-  if (!response.ok) throw await parseSafeError(response);
+  if (!response.ok) {
+    if (response.status === 401) handleControlPlaneUnauthorized();
+    throw await parseSafeError(response);
+  }
   return response.blob();
 }
 

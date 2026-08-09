@@ -61,6 +61,43 @@ describe('discovered-model normalization', () => {
 
     expect(model!.metadata).toEqual({ supportedThinkingLevels: ['OFF', 'HIGH', 'MAX'] });
   });
+
+  it('recognizes official catalog evidence without pretending it came from provider metadata', () => {
+    const [model] = normalizeApiPayload('/admin/discovered-models', [
+      {
+        id: 'candidate-1',
+        metadata: {
+          capabilityEvidence: {
+            reasoning: [{ source: 'official_catalog', profile: 'openai:gpt-5.6' }],
+          },
+        },
+      },
+    ]) as Array<Record<string, unknown>>;
+
+    expect(model!.capabilitySource).toBe('OFFICIAL_CATALOG');
+  });
+});
+
+describe('customer model normalization', () => {
+  it('preserves safe Thinking and parameter support policy', () => {
+    const [model] = normalizeApiPayload('/me/models', [
+      {
+        id: 'grant-1',
+        alias: 'gpt-5.6-sol',
+        capabilities: { chat: true, reasoning: true },
+        thinkingControlMode: 'USER_SELECTABLE',
+        supportedThinkingLevels: ['OFF', 'LOW', 'MAX', 'PROVIDER_DEFAULT', 'invalid'],
+        parameterSupport: { temperature: false },
+      },
+    ]) as Array<Record<string, unknown>>;
+
+    expect(model).toMatchObject({
+      name: 'gpt-5.6-sol',
+      thinkingControlMode: 'USER_SELECTABLE',
+      supportedThinkingLevels: ['OFF', 'LOW', 'MAX'],
+      parameterSupport: { temperature: false },
+    });
+  });
 });
 
 describe('batch grant normalization', () => {

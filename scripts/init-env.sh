@@ -79,6 +79,15 @@ validate_proxy_cidrs() {
     || die "TRUSTED_PROXY_CIDRS must be 'private_ranges' or a space-separated CIDR list."
 }
 
+validate_session_timeouts() {
+  local idle_seconds="$1"
+  local max_seconds="$2"
+  [[ "$idle_seconds" =~ ^[1-9][0-9]*$ && "$max_seconds" =~ ^[1-9][0-9]*$ ]] \
+    || die "AUTH_SESSION_IDLE_SECONDS and AUTH_SESSION_MAX_SECONDS must be positive integers."
+  (( idle_seconds <= max_seconds )) \
+    || die "AUTH_SESSION_IDLE_SECONDS must not exceed AUTH_SESSION_MAX_SECONDS."
+}
+
 resolve_secrets_dir() {
   local configured="$1"
   if [[ "$configured" = /* ]]; then
@@ -142,6 +151,12 @@ validate_existing_environment() {
 
   validate_public_url "$(env_value PUBLIC_BASE_URL)"
   validate_proxy_cidrs "$(env_value TRUSTED_PROXY_CIDRS)"
+  local session_idle session_max
+  session_idle="$(env_value AUTH_SESSION_IDLE_SECONDS)"
+  session_max="$(env_value AUTH_SESSION_MAX_SECONDS)"
+  if [[ -n "$session_idle" || -n "$session_max" ]]; then
+    validate_session_timeouts "$session_idle" "$session_max"
+  fi
   [[ "$(env_value INITIAL_ADMIN_EMAIL)" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] \
     || die "INITIAL_ADMIN_EMAIL is not a valid email address."
 

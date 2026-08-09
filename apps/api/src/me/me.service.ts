@@ -6,6 +6,7 @@ import { CryptoService } from '../security/crypto.service';
 import { AppError } from '../common/errors';
 import type { AuthenticatedPrincipal } from '../auth/auth.types';
 import { UsageQueryService, type UsageHttpQuery } from '../usage/usage-query.service';
+import { modelParameterSupport } from '../gateway/request-transform';
 
 const createKeySchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -55,8 +56,12 @@ export class MeService {
             select: {
               displayName: true,
               capabilities: true,
+              upstreamModelId: true,
+              thinkingControlMode: true,
+              supportedThinkingLevels: true,
               inputPricePerM: true,
               outputPricePerM: true,
+              provider: { select: { type: true } },
             },
           },
         },
@@ -68,6 +73,12 @@ export class MeService {
           alias: item.alias,
           displayName: item.publishedModel.displayName ?? item.alias,
           capabilities: item.publishedModel.capabilities,
+          thinkingControlMode: item.publishedModel.thinkingControlMode,
+          supportedThinkingLevels: item.publishedModel.supportedThinkingLevels,
+          parameterSupport: modelParameterSupport(
+            item.publishedModel.provider.type,
+            item.publishedModel.upstreamModelId,
+          ),
           inputPricePerM: item.customInputPricePerM ?? item.publishedModel.inputPricePerM,
           outputPricePerM: item.customOutputPricePerM ?? item.publishedModel.outputPricePerM,
         })),
@@ -162,6 +173,10 @@ export class MeService {
 
   usage(principal: AuthenticatedPrincipal, query: UsageHttpQuery = {}) {
     return this.usageQuery.query(query, principal.userId);
+  }
+
+  dashboard(principal: AuthenticatedPrincipal) {
+    return this.usageQuery.dashboard(principal.userId);
   }
 
   usageCsv(principal: AuthenticatedPrincipal, query: UsageHttpQuery = {}) {

@@ -1,19 +1,22 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 import { randomBytes } from 'node:crypto';
+import { AppError } from '../common/errors';
 import { loadRuntimeConfig } from '../config/runtime-config';
 
-interface BrowserSession {
+export interface BrowserSession {
   accessToken: string;
   refreshToken?: string;
   idToken?: string;
   expiresAt: number;
   refreshExpiresAt?: number;
+  absoluteExpiresAt: number;
 }
 
-interface LoginFlow {
+export interface LoginFlow {
   verifier: string;
   nonce: string;
+  returnTo: string;
 }
 
 @Injectable()
@@ -42,8 +45,17 @@ export class SessionService implements OnModuleDestroy {
   async createSession(session: BrowserSession): Promise<string> {
     await this.ensureConnected();
     const id = randomBytes(32).toString('base64url');
-    const ttl = this.sessionTtl(session);
-    await this.redis.set(`browser-session:${id}`, JSON.stringify(session), 'EX', ttl);
+    const now = Date.now();
+    const storedSession = {
+      ...session,
+      absoluteExpiresAt: Math.min(
+        session.absoluteExpiresAt,
+        now + this.config.authSessionMaxSeconds * 1000,
+      ),
+    };
+    const ttl = this.sessionTtl(storedSession, now);
+    if (ttl <= 0) throw new AppError('authentication_error', 401);
+    await this.redis.set(`browser-session:${id}`, JSON.stringify(storedSession), 'EX', ttl);
     return id;
   }
 
@@ -53,13 +65,22 @@ export class SessionService implements OnModuleDestroy {
     const value = await this.redis.get(`browser-session:${id}`);
     if (!value) return undefined;
     const session = JSON.parse(value) as BrowserSession;
-    if (session.expiresAt > Date.now() + 15_000) return session;
-    if (
-      !session.refreshToken ||
-      (session.refreshExpiresAt && session.refreshExpiresAt <= Date.now())
-    ) {
+    const now = Date.now();
+    // Sessions created before absolute expiry was introduced are intentionally
+    // invalidated once instead of receiving a fresh 30-day window.
+    if (!Number.isFinite(session.absoluteExpiresAt) || session.absoluteExpiresAt <= now) {
       await this.deleteSession(id);
       return undefined;
+    }
+    if (!session.refreshToken || (session.refreshExpiresAt && session.refreshExpiresAt <= now)) {
+      if (session.expiresAt <= now + 15_000) {
+        await this.deleteSession(id);
+        return undefined;
+      }
+    }
+    if (session.expiresAt > now + 15_000) {
+      await this.touchSession(id, session, now);
+      return session;
     }
     return this.refreshSession(id, session);
   }
@@ -81,6 +102,10 @@ export class SessionService implements OnModuleDestroy {
     id: string,
     session: BrowserSession,
   ): Promise<BrowserSession | undefined> {
+    if (session.absoluteExpiresAt <= Date.now()) {
+      await this.deleteSession(id);
+      return undefined;
+    }
     try {
       const body = new URLSearchParams({
         grant_type: 'refresh_token',
@@ -96,14 +121,28 @@ export class SessionService implements OnModuleDestroy {
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) {
-        await response.body?.cancel();
-        await this.deleteSession(id);
-        return undefined;
+        const failure = await readTokenFailure(response);
+        if (failure === 'invalid_grant') {
+          await this.deleteSession(id);
+          return undefined;
+        }
+        throw new AppError(
+          'provider_unavailable',
+          503,
+          'Authentication service is temporarily unavailable.',
+          null,
+          { status: response.status, error: failure },
+        );
       }
       const tokens = (await response.json()) as Record<string, unknown>;
       if (typeof tokens.access_token !== 'string') {
-        await this.deleteSession(id);
-        return undefined;
+        throw new AppError(
+          'provider_unavailable',
+          503,
+          'Authentication service is temporarily unavailable.',
+          null,
+          { error: 'invalid_token_response' },
+        );
       }
       const now = Date.now();
       const refreshed: BrowserSession = {
@@ -116,23 +155,71 @@ export class SessionService implements OnModuleDestroy {
           tokens.refresh_expires_in === undefined
             ? session.refreshExpiresAt
             : now + Math.max(60, Number(tokens.refresh_expires_in)) * 1000,
+        absoluteExpiresAt: session.absoluteExpiresAt,
       };
-      await this.redis.set(
-        `browser-session:${id}`,
-        JSON.stringify(refreshed),
-        'EX',
-        this.sessionTtl(refreshed),
-      );
+      const ttl = this.sessionTtl(refreshed, now);
+      if (ttl <= 0) {
+        await this.deleteSession(id);
+        return undefined;
+      }
+      await this.redis.set(`browser-session:${id}`, JSON.stringify(refreshed), 'EX', ttl);
       return refreshed;
-    } catch {
-      await this.deleteSession(id).catch(() => undefined);
-      return undefined;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      const isTimeout =
+        error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      throw new AppError(
+        isTimeout ? 'upstream_timeout' : 'provider_unavailable',
+        isTimeout ? 504 : 503,
+        isTimeout
+          ? 'Authentication service timed out.'
+          : 'Authentication service is temporarily unavailable.',
+        null,
+        error,
+      );
     }
   }
 
-  private sessionTtl(session: BrowserSession): number {
-    const end = session.refreshExpiresAt ?? session.expiresAt;
-    return Math.max(60, Math.min(86_400, Math.floor((end - Date.now()) / 1000)));
+  private async touchSession(id: string, session: BrowserSession, now: number): Promise<void> {
+    const ttl = this.sessionTtl(session, now);
+    if (ttl <= 0) {
+      await this.deleteSession(id);
+      return;
+    }
+    await this.redis.expire(`browser-session:${id}`, ttl);
+  }
+
+  private sessionTtl(session: BrowserSession, now = Date.now()): number {
+    return sessionTtlSeconds(
+      session,
+      now,
+      this.config.authSessionIdleSeconds,
+      this.config.authSessionMaxSeconds,
+    );
+  }
+}
+
+export function sessionTtlSeconds(
+  session: BrowserSession,
+  now: number,
+  idleSeconds: number,
+  maximumSeconds: number,
+): number {
+  const configuredEnd = now + maximumSeconds * 1000;
+  const credentialEnd = session.refreshToken
+    ? (session.refreshExpiresAt ?? session.absoluteExpiresAt)
+    : session.expiresAt;
+  const end = Math.min(session.absoluteExpiresAt, credentialEnd, configuredEnd);
+  return Math.max(0, Math.min(idleSeconds, Math.floor((end - now) / 1000)));
+}
+
+async function readTokenFailure(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as Record<string, unknown>;
+    return typeof body.error === 'string' ? body.error : 'token_endpoint_error';
+  } catch {
+    await response.body?.cancel().catch(() => undefined);
+    return 'token_endpoint_error';
   }
 }
 

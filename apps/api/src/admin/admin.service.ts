@@ -4,6 +4,7 @@ import {
   ProviderAuthMode,
   ProviderType,
   PromptMode,
+  ThinkingControlMode,
   ThinkingLevel,
   UserRole,
 } from '@prisma/client';
@@ -28,6 +29,30 @@ const providerSchema = z.object({
   active: z.boolean().default(true),
 });
 
+const emptyPublishedCapabilities = {
+  chat: false,
+  responses: false,
+  embeddings: false,
+  vision: false,
+  tools: false,
+  structuredOutput: false,
+  streaming: false,
+  reasoning: false,
+  nativeResponses: false,
+};
+
+const publishedCapabilitiesSchema = z.object({
+  chat: z.boolean().default(false),
+  responses: z.boolean().default(false),
+  embeddings: z.boolean().default(false),
+  vision: z.boolean().default(false),
+  tools: z.boolean().default(false),
+  structuredOutput: z.boolean().default(false),
+  streaming: z.boolean().default(false),
+  reasoning: z.boolean().default(false),
+  nativeResponses: z.boolean().default(false),
+});
+
 const modelSchema = z.object({
   providerId: z.string().uuid(),
   upstreamModelId: z.string().trim().min(1).max(255),
@@ -38,10 +63,19 @@ const modelSchema = z.object({
     .max(255)
     .regex(/^[A-Za-z0-9._:/-]+$/),
   displayName: z.string().trim().max(255).optional().nullable(),
-  capabilities: z.record(z.string(), z.union([z.boolean(), z.string()])).default({}),
+  capabilities: publishedCapabilitiesSchema.default(emptyPublishedCapabilities),
   promptMode: z.nativeEnum(PromptMode).default(PromptMode.NONE),
   systemPrompt: z.string().max(100000).optional().nullable(),
   thinkingLevel: z.nativeEnum(ThinkingLevel).default(ThinkingLevel.PROVIDER_DEFAULT),
+  thinkingControlMode: z.nativeEnum(ThinkingControlMode).default(ThinkingControlMode.FIXED),
+  supportedThinkingLevels: z
+    .array(z.nativeEnum(ThinkingLevel))
+    .max(7)
+    .refine((levels) => !levels.includes(ThinkingLevel.PROVIDER_DEFAULT), {
+      message: 'Provider default is not a confirmed thinking level.',
+    })
+    .transform(uniqueThinkingLevels)
+    .default([]),
   maxRetries: z.coerce.number().int().min(0).max(5).default(0),
   inputPricePerM: z.coerce.number().nonnegative().max(1000000).default(0),
   outputPricePerM: z.coerce.number().nonnegative().max(1000000).default(0),
@@ -125,7 +159,7 @@ export class AdminService {
           encryptedSecret: true,
           _count: {
             select: {
-              discoveredModels: true,
+              discoveredModels: { where: { available: true } },
               publishedModels: { where: { deletedAt: null } },
             },
           },
@@ -335,7 +369,15 @@ export class AdminService {
 
   async scanProvider(id: string, actor: AuthenticatedPrincipal, requestId: string) {
     const job = await this.withSerializableTransaction(async (tx) => {
-      await this.requireProvider(id, tx);
+      const provider = await this.requireProvider(id, tx);
+      if (!provider.active) {
+        throw new AppError(
+          'invalid_request_error',
+          409,
+          'A disabled provider cannot be scanned.',
+          'id',
+        );
+      }
       return tx.scanJob.create({ data: { providerId: id, status: 'PENDING' } });
     });
     try {
@@ -359,15 +401,50 @@ export class AdminService {
     }
   }
 
-  listDiscovered(providerId?: string) {
-    return this.prisma.discoveredModel.findMany({
+  async getModelScan(id: string) {
+    const job = await this.prisma.scanJob.findFirst({
+      where: { id, provider: { deletedAt: null } },
+      select: {
+        id: true,
+        providerId: true,
+        status: true,
+        discoveredCount: true,
+        safeErrorCode: true,
+        startedAt: true,
+        finishedAt: true,
+        createdAt: true,
+      },
+    });
+    if (!job) {
+      throw new AppError('invalid_request_error', 404, 'The model scan was not found.', 'id');
+    }
+    return job;
+  }
+
+  async listDiscovered(providerId?: string, available: boolean | 'all' = true) {
+    const items = await this.prisma.discoveredModel.findMany({
       where: {
         ...(providerId ? { providerId } : {}),
+        ...(available === 'all' ? {} : { available }),
         provider: { deletedAt: null },
       },
       include: { provider: { select: { id: true, name: true, type: true } } },
       orderBy: [{ providerId: 'asc' }, { upstreamModelId: 'asc' }],
     });
+    const providerIds = [...new Set(items.map((item) => item.providerId))];
+    const publishedModels = providerIds.length
+      ? await this.prisma.publishedModel.findMany({
+          where: { providerId: { in: providerIds }, deletedAt: null },
+          select: { providerId: true, upstreamModelId: true },
+        })
+      : [];
+    const publishedKeys = new Set(
+      publishedModels.map((model) => `${model.providerId}\u0000${model.upstreamModelId}`),
+    );
+    return items.map((item) => ({
+      ...item,
+      published: publishedKeys.has(`${item.providerId}\u0000${item.upstreamModelId}`),
+    }));
   }
 
   listModels() {
@@ -393,10 +470,36 @@ export class AdminService {
     }
     return this.withSerializableTransaction(async (tx) => {
       await this.requireProvider(value.providerId, tx);
+      await this.assertUnpublishedUpstream(value.providerId, value.upstreamModelId, undefined, tx);
+      const candidate = await tx.discoveredModel.findUnique({
+        where: {
+          providerId_upstreamModelId: {
+            providerId: value.providerId,
+            upstreamModelId: value.upstreamModelId,
+          },
+        },
+      });
+      if (candidate && !candidate.available) throw unavailableCandidate();
+      const supportedThinkingLevels = candidate
+        ? thinkingLevelsFromMetadata(candidate.metadata)
+        : [];
+      assertRequestedThinkingLevelsConfirmed(
+        value.supportedThinkingLevels,
+        supportedThinkingLevels,
+        candidate?.available === true,
+      );
+      validateThinkingPolicy(
+        value.thinkingControlMode,
+        supportedThinkingLevels,
+        value.thinkingLevel,
+      );
       const model = await tx.publishedModel.create({
         data: {
           ...value,
-          capabilities: value.capabilities as Prisma.InputJsonValue,
+          capabilities: normalizePublishedCapabilities(
+            candidate?.capabilities ?? value.capabilities,
+          ) as Prisma.InputJsonValue,
+          supportedThinkingLevels,
           inputPricePerM: new Prisma.Decimal(value.inputPricePerM),
           outputPricePerM: new Prisma.Decimal(value.outputPricePerM),
         },
@@ -407,7 +510,13 @@ export class AdminService {
   }
 
   async updateModel(id: string, input: unknown, actor: AuthenticatedPrincipal, requestId: string) {
-    const value = parse(modelSchema.partial(), input);
+    const parsedValue = parse(modelSchema.partial(), input);
+    const suppliedValue = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const value = Object.fromEntries(
+      Object.entries(parsedValue).filter(([key]) =>
+        Object.prototype.hasOwnProperty.call(suppliedValue, key),
+      ),
+    ) as Partial<z.infer<typeof modelSchema>>;
     return this.withSerializableTransaction(async (tx) => {
       const current = await tx.publishedModel.findFirst({
         where: { id, deletedAt: null, provider: { deletedAt: null } },
@@ -416,6 +525,30 @@ export class AdminService {
       if (value.providerId && value.providerId !== current.providerId) {
         await this.requireProvider(value.providerId, tx);
       }
+      const effectiveProviderId = value.providerId ?? current.providerId;
+      const effectiveUpstreamModelId = value.upstreamModelId ?? current.upstreamModelId;
+      const upstreamChanged =
+        effectiveProviderId !== current.providerId ||
+        effectiveUpstreamModelId !== current.upstreamModelId;
+      if (upstreamChanged) {
+        await this.assertUnpublishedUpstream(effectiveProviderId, effectiveUpstreamModelId, id, tx);
+      }
+      const requestedThinkingLevels = value.supportedThinkingLevels;
+      const thinkingSnapshotChanged =
+        requestedThinkingLevels !== undefined &&
+        !sameThinkingLevels(requestedThinkingLevels, current.supportedThinkingLevels);
+      const candidate =
+        upstreamChanged || thinkingSnapshotChanged
+          ? await tx.discoveredModel.findUnique({
+              where: {
+                providerId_upstreamModelId: {
+                  providerId: effectiveProviderId,
+                  upstreamModelId: effectiveUpstreamModelId,
+                },
+              },
+            })
+          : undefined;
+      if (upstreamChanged && candidate && !candidate.available) throw unavailableCandidate();
       const effectivePromptMode = value.promptMode ?? current.promptMode;
       const effectiveSystemPrompt =
         value.systemPrompt === undefined ? current.systemPrompt : value.systemPrompt;
@@ -427,13 +560,39 @@ export class AdminService {
           'systemPrompt',
         );
       }
+      let supportedThinkingLevels = current.supportedThinkingLevels;
+      if (upstreamChanged || thinkingSnapshotChanged) {
+        if (thinkingSnapshotChanged && candidate?.available !== true) {
+          throw unconfirmedThinkingLevels();
+        }
+        const candidateThinkingLevels =
+          candidate?.available === true ? thinkingLevelsFromMetadata(candidate.metadata) : [];
+        assertRequestedThinkingLevelsConfirmed(
+          requestedThinkingLevels ?? [],
+          candidateThinkingLevels,
+          candidate?.available === true,
+        );
+        supportedThinkingLevels = candidateThinkingLevels;
+      }
+      const effectiveThinkingControlMode = value.thinkingControlMode ?? current.thinkingControlMode;
+      const effectiveThinkingLevel = value.thinkingLevel ?? current.thinkingLevel;
+      validateThinkingPolicy(
+        effectiveThinkingControlMode,
+        supportedThinkingLevels,
+        effectiveThinkingLevel,
+      );
       let model;
       try {
         model = await tx.publishedModel.update({
           where: { id, deletedAt: null },
           data: {
             ...value,
-            capabilities: value.capabilities as Prisma.InputJsonValue | undefined,
+            capabilities: normalizeOptionalPublishedCapabilities(
+              upstreamChanged
+                ? (candidate?.capabilities ?? value.capabilities ?? {})
+                : value.capabilities,
+            ) as Prisma.InputJsonValue | undefined,
+            supportedThinkingLevels,
             inputPricePerM:
               value.inputPricePerM === undefined
                 ? undefined
@@ -787,6 +946,31 @@ export class AdminService {
     return user;
   }
 
+  private async assertUnpublishedUpstream(
+    providerId: string,
+    upstreamModelId: string,
+    excludeId: string | undefined,
+    client: Pick<Prisma.TransactionClient, 'publishedModel'>,
+  ): Promise<void> {
+    const existing = await client.publishedModel.findFirst({
+      where: {
+        providerId,
+        upstreamModelId,
+        deletedAt: null,
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new AppError(
+        'invalid_request_error',
+        409,
+        'This upstream model has already been published for the provider.',
+        'upstreamModelId',
+      );
+    }
+  }
+
   private async withSerializableTransaction<T>(
     work: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
@@ -870,6 +1054,109 @@ function deletedProviderName(originalName: string, id: string): string {
 
 function deletedModelAlias(originalAlias: string, id: string): string {
   return `${originalAlias} [deleted:${id}]`;
+}
+
+function uniqueThinkingLevels(levels: ThinkingLevel[]): ThinkingLevel[] {
+  return [...new Set(levels)];
+}
+
+function thinkingLevelsFromMetadata(value: Prisma.JsonValue | null): ThinkingLevel[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const levels = (value as Prisma.JsonObject).supportedThinkingLevels;
+  if (!Array.isArray(levels)) return [];
+  const allowed = new Set<unknown>(Object.values(ThinkingLevel));
+  return uniqueThinkingLevels(
+    levels.filter(
+      (level): level is ThinkingLevel =>
+        allowed.has(level) && level !== ThinkingLevel.PROVIDER_DEFAULT,
+    ),
+  );
+}
+
+function normalizeOptionalPublishedCapabilities(
+  value: Prisma.JsonValue | Record<string, boolean> | undefined,
+): Record<string, boolean> | undefined {
+  return value === undefined ? undefined : normalizePublishedCapabilities(value);
+}
+
+export function normalizePublishedCapabilities(
+  value: Prisma.JsonValue | Record<string, boolean>,
+): Record<string, boolean> {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    chat: source.chat === true,
+    responses: source.responses === true,
+    embeddings: source.embeddings === true,
+    vision: source.vision === true,
+    tools: source.tools === true,
+    structuredOutput: source.structuredOutput === true,
+    streaming: source.streaming === true,
+    reasoning: source.reasoning === true,
+    nativeResponses: source.nativeResponses === true,
+  };
+}
+
+function validateThinkingPolicy(
+  mode: ThinkingControlMode,
+  supportedThinkingLevels: ThinkingLevel[],
+  fixedLevel: ThinkingLevel,
+): void {
+  if (mode === ThinkingControlMode.USER_SELECTABLE && supportedThinkingLevels.length === 0) {
+    throw new AppError(
+      'invalid_request_error',
+      400,
+      'User-selectable thinking requires confirmed reasoning effort levels.',
+      'thinkingControlMode',
+    );
+  }
+  if (
+    mode === ThinkingControlMode.FIXED &&
+    fixedLevel !== ThinkingLevel.PROVIDER_DEFAULT &&
+    supportedThinkingLevels.length > 0 &&
+    !supportedThinkingLevels.includes(fixedLevel)
+  ) {
+    throw new AppError(
+      'invalid_request_error',
+      400,
+      'The fixed thinking level is not confirmed for this model.',
+      'thinkingLevel',
+    );
+  }
+}
+
+function assertRequestedThinkingLevelsConfirmed(
+  requested: ThinkingLevel[],
+  confirmed: ThinkingLevel[],
+  hasAvailableCandidate: boolean,
+): void {
+  if (requested.length === 0) return;
+  if (!hasAvailableCandidate) throw unconfirmedThinkingLevels();
+  const confirmedSet = new Set(confirmed);
+  if (requested.some((level) => !confirmedSet.has(level))) throw unconfirmedThinkingLevels();
+}
+
+function sameThinkingLevels(left: ThinkingLevel[], right: ThinkingLevel[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((level) => rightSet.has(level));
+}
+
+function unconfirmedThinkingLevels(): AppError {
+  return new AppError(
+    'invalid_request_error',
+    400,
+    'Thinking levels must come from the current available model scan.',
+    'supportedThinkingLevels',
+  );
+}
+
+function unavailableCandidate(): AppError {
+  return new AppError(
+    'invalid_request_error',
+    409,
+    'This discovered model is no longer available from the provider.',
+    'upstreamModelId',
+  );
 }
 
 function isForeignKeyConstraintError(error: unknown): boolean {

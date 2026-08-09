@@ -48,7 +48,15 @@ export interface DiscoveredModelMetadata extends Record<string, unknown> {
 }
 
 export type CapabilitySource =
-  'METADATA' | 'PROVIDER_STATUS' | 'ROUTER_EMULATION' | 'MIXED' | 'ADMIN_CONFIRMED' | 'UNKNOWN';
+  | 'METADATA'
+  | 'PROVIDER_STATUS'
+  | 'ROUTER_EMULATION'
+  | 'OFFICIAL_CATALOG'
+  | 'MIXED'
+  | 'ADMIN_CONFIRMED'
+  | 'UNKNOWN';
+
+export type ThinkingControlMode = 'FIXED' | 'USER_SELECTABLE';
 
 export interface DiscoveredModel {
   id: string;
@@ -79,6 +87,8 @@ export interface PublishedModel {
   promptMode: PromptMode;
   systemPrompt?: string | null;
   thinkingLevel: ThinkingLevel;
+  thinkingControlMode: ThinkingControlMode;
+  supportedThinkingLevels: ThinkingLevel[];
   maxRetries: number;
   inputPriceUsdPerMillion: string;
   outputPriceUsdPerMillion: string;
@@ -120,7 +130,7 @@ export interface UsageRecord extends UsageAmount {
   model: string;
   kind: 'CHAT' | 'RESPONSES' | 'EMBEDDINGS';
   source: 'API' | 'PLAYGROUND' | 'DOCS';
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   retries: number;
   latencyMs: number;
   requestId: string;
@@ -188,6 +198,11 @@ export interface ModelOption {
   id: string;
   name: string;
   capabilities: Partial<ModelCapabilities>;
+  thinkingControlMode: ThinkingControlMode;
+  supportedThinkingLevels: ThinkingLevel[];
+  parameterSupport: {
+    temperature: boolean | 'unconfirmed';
+  };
 }
 
 export interface PageResult<T> {

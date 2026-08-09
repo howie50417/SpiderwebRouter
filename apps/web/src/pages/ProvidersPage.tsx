@@ -23,7 +23,7 @@ import {
   type ProviderType,
 } from '@spiderwebrouter/contracts';
 import { App, Button, Popconfirm, Space, Tooltip, Typography } from 'antd';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { apiClient, getSafeError } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
@@ -31,6 +31,7 @@ import { EnabledBadge, StatusBadge } from '@/components/StatusBadge';
 import { PageIntro } from '@/components/PageIntro';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatDateTime } from '@/lib/format';
+import { pollModelScan, type ModelScanJob } from '@/lib/modelScan';
 import type { ProviderRecord } from '@/types';
 
 interface ProviderFormValues {
@@ -53,11 +54,14 @@ interface DeleteProviderResult {
 
 export function ProvidersPage() {
   const actionRef = useRef<ActionType | undefined>(undefined);
+  const scanAbortRef = useRef<AbortController | undefined>(undefined);
   const { message } = App.useApp();
   const { locale, tr } = useAppSettings();
   const [editing, setEditing] = useState<ProviderRecord>();
   const [formOpen, setFormOpen] = useState(false);
   const [busyId, setBusyId] = useState<string>();
+
+  useEffect(() => () => scanAbortRef.current?.abort(), []);
 
   const notifyError = (reason: unknown) => {
     const error = getSafeError(reason);
@@ -79,29 +83,36 @@ export function ProvidersPage() {
     }
   };
 
-  const scan = async (providerId?: string) => {
-    setBusyId(providerId ? `scan:${providerId}` : 'scan:all');
+  const scan = async (provider: ProviderRecord) => {
+    scanAbortRef.current?.abort();
+    const controller = new AbortController();
+    scanAbortRef.current = controller;
+    setBusyId(`scan:${provider.id}`);
     try {
-      if (providerId) {
-        await apiClient.post(endpoints.providerScan(providerId));
-      } else {
-        const providers = await apiClient.list<ProviderRecord>(endpoints.providers, {
-          pageSize: 500,
-          enabled: true,
-        });
-        const results = await Promise.allSettled(
-          providers.data
-            .filter((provider) => provider.enabled)
-            .map((provider) => apiClient.post(endpoints.providerScan(provider.id))),
+      const queued = await apiClient.post<{ jobId: string }>(endpoints.providerScan(provider.id));
+      const job = await pollModelScan({
+        jobId: queued.jobId,
+        load: (jobId) =>
+          apiClient.get<ModelScanJob>(endpoints.modelScanJob(jobId), undefined, controller.signal),
+      });
+      if (job.status === 'FAILED') {
+        message.error(
+          tr('模型掃描失敗，請使用伺服器日誌排查。', 'Model scan failed. Check server logs.'),
         );
-        if (results.some((result) => result.status === 'rejected')) {
-          throw results.find((result) => result.status === 'rejected')?.reason;
-        }
+        return;
       }
-      message.success(tr('模型掃描已排入工作佇列', 'Model scan has been queued'));
+      message.success(
+        tr(
+          `掃描完成，共發現 ${job.discoveredCount} 個模型。`,
+          `Scan completed with ${job.discoveredCount} models.`,
+        ),
+      );
+      actionRef.current?.reload();
     } catch (error) {
+      if (controller.signal.aborted) return;
       notifyError(error);
     } finally {
+      if (scanAbortRef.current === controller) scanAbortRef.current = undefined;
       setBusyId(undefined);
     }
   };
@@ -182,7 +193,7 @@ export function ProvidersPage() {
       valueType: 'dateTime',
       search: false,
       width: 180,
-      renderText: (value) => formatDateTime(value, locale),
+      render: (_, row) => formatDateTime(row.lastCheckedAt, locale),
     },
     {
       title: tr('操作', 'Actions'),
@@ -207,7 +218,8 @@ export function ProvidersPage() {
           size="small"
           icon={<RadarChartOutlined />}
           loading={busyId === `scan:${row.id}`}
-          onClick={() => void scan(row.id)}
+          disabled={!row.enabled || Boolean(busyId?.startsWith('scan:'))}
+          onClick={() => void scan(row)}
         >
           {tr('掃描', 'Scan')}
         </Button>,
@@ -259,25 +271,16 @@ export function ProvidersPage() {
           'Manage OpenAI, Gemini, vLLM, Ollama, and Open WebUI connections. Secrets can be replaced but never read back.',
         )}
         actions={
-          <>
-            <Button
-              icon={<RadarChartOutlined />}
-              loading={busyId === 'scan:all'}
-              onClick={() => void scan()}
-            >
-              {tr('掃描全部', 'Scan all')}
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setEditing(undefined);
-                setFormOpen(true);
-              }}
-            >
-              {tr('新增來源', 'Add provider')}
-            </Button>
-          </>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditing(undefined);
+              setFormOpen(true);
+            }}
+          >
+            {tr('新增來源', 'Add provider')}
+          </Button>
         }
       />
 

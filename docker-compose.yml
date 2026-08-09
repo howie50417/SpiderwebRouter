@@ -40,6 +40,8 @@ x-api-environment: &api-environment
   INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?Run scripts/init-env before starting the stack}
   INITIAL_ADMIN_PASSWORD_FILE: /run/secrets/initial_admin_password
   UPSTREAM_REQUEST_TIMEOUT_MS: ${UPSTREAM_REQUEST_TIMEOUT_MS:-120000}
+  AUTH_SESSION_IDLE_SECONDS: ${AUTH_SESSION_IDLE_SECONDS:-604800}
+  AUTH_SESSION_MAX_SECONDS: ${AUTH_SESSION_MAX_SECONDS:-2592000}
   ALLOWED_HTTP_PROVIDER_HOSTS: ${ALLOWED_HTTP_PROVIDER_HOSTS:-}
   ALLOWED_HTTP_HOSTS: ${ALLOWED_HTTP_PROVIDER_HOSTS:-}
 
@@ -298,6 +300,8 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Run scripts/init-env before starting the stack}
       OIDC_REALM: spiderwebrouter
       OIDC_CLIENT_ID: spiderwebrouter-web
+      AUTH_SESSION_IDLE_SECONDS: ${AUTH_SESSION_IDLE_SECONDS:-604800}
+      AUTH_SESSION_MAX_SECONDS: ${AUTH_SESSION_MAX_SECONDS:-2592000}
     secrets:
       - keycloak_db_password
       - keycloak_admin_password

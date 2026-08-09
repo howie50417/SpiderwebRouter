@@ -94,6 +94,186 @@ describe('client thinking controls', () => {
     expect(result.reasoning).toEqual({ effort: 'minimal' });
   });
 
+  it('uses none for OFF-capable GPT-5.1+ profiles while retaining the GPT-5 minimal wire value', () => {
+    const gpt56 = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5.6-sol', thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+    const gpt55 = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5.5', thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+    const gpt54 = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5.4', thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+    const gpt52 = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5.2', thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+    const gpt51 = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5.1', thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+    const gpt5 = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5', thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+    const compatible = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ upstreamModelId: 'gpt-5.6-sol', thinkingLevel: 'OFF' }),
+      'GENERIC_OPENAI',
+    );
+
+    expect(gpt56.reasoning).toEqual({ effort: 'none' });
+    expect(gpt55.reasoning).toEqual({ effort: 'none' });
+    expect(gpt54.reasoning).toEqual({ effort: 'none' });
+    expect(gpt52.reasoning).toEqual({ effort: 'none' });
+    expect(gpt51.reasoning).toEqual({ effort: 'none' });
+    expect(gpt5.reasoning).toEqual({ effort: 'minimal' });
+    expect(compatible.reasoning).toEqual({ effort: 'none' });
+  });
+
+  it.each(['chat', 'responses'] as const)(
+    'silently strips GPT-5.6 temperature for %s, including streaming requests',
+    (operation) => {
+      const source =
+        operation === 'chat'
+          ? {
+              model: 'alias',
+              messages: [{ role: 'user', content: 'hello' }],
+              temperature: 0.7,
+              stream: true,
+            }
+          : { model: 'alias', input: 'hello', temperature: 0.7, stream: true };
+      const result = prepareRequestBody(
+        source,
+        operation,
+        model({ upstreamModelId: 'gpt-5.6-terra' }),
+        'OPENAI',
+      );
+      expect(result).not.toHaveProperty('temperature');
+      expect(source.temperature).toBe(0.7);
+    },
+  );
+
+  it('retains temperature for older and third-party models', () => {
+    expect(
+      prepareRequestBody(
+        { messages: [{ role: 'user', content: 'hello' }], temperature: 0.2 },
+        'chat',
+        model({ upstreamModelId: 'gpt-4o' }),
+        'OPENAI',
+      ).temperature,
+    ).toBe(0.2);
+    expect(
+      prepareRequestBody(
+        { messages: [{ role: 'user', content: 'hello' }], temperature: 0.3 },
+        'chat',
+        model({ upstreamModelId: 'gpt-5.6-sol' }),
+        'GENERIC_OPENAI',
+      ).temperature,
+    ).toBe(0.3);
+  });
+
+  it('ignores malformed client thinking in FIXED mode before applying the server policy', () => {
+    const result = prepareRequestBody(
+      {
+        messages: [{ role: 'user', content: 'hello' }],
+        reasoning_effort: { malicious: true },
+        thinkingConfig: { thinkingBudget: -1 },
+      },
+      'chat',
+      model({ thinkingControlMode: 'FIXED', thinkingLevel: 'HIGH' }),
+      'OPENAI',
+    );
+    expect(result.reasoning_effort).toBe('high');
+    expect(result).not.toHaveProperty('thinkingConfig');
+  });
+
+  it('allows only confirmed canonical thinking controls in USER_SELECTABLE mode', () => {
+    const selectable = model({
+      thinkingControlMode: 'USER_SELECTABLE',
+      supportedThinkingLevels: ['OFF', 'HIGH'],
+      thinkingLevel: 'LOW',
+    });
+    const chat = prepareRequestBody(
+      { messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'high' },
+      'chat',
+      selectable,
+      'OPENAI',
+    );
+    const responses = prepareRequestBody(
+      { input: 'hello', reasoning: { effort: 'none' } },
+      'responses',
+      model({
+        ...selectable,
+        upstreamModelId: 'gpt-5.6-sol',
+      }),
+      'OPENAI',
+    );
+    const providerDefault = prepareRequestBody(
+      { input: 'hello' },
+      'responses',
+      selectable,
+      'OPENAI',
+    );
+
+    expect(chat.reasoning_effort).toBe('high');
+    expect(responses.reasoning).toEqual({ effort: 'none' });
+    expect(providerDefault).not.toHaveProperty('reasoning');
+    expect(() =>
+      prepareRequestBody(
+        { messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'low' },
+        'chat',
+        selectable,
+        'OPENAI',
+      ),
+    ).toThrowError(/reasoning effort is not available/i);
+  });
+
+  it('ignores non-canonical controls in USER_SELECTABLE mode', () => {
+    const selectable = model({
+      thinkingControlMode: 'USER_SELECTABLE',
+      supportedThinkingLevels: ['HIGH'],
+    });
+    const chat = prepareRequestBody(
+      {
+        messages: [{ role: 'user', content: 'hello' }],
+        reasoning: { effort: 'high' },
+        thinking: 'high',
+      },
+      'chat',
+      selectable,
+      'OPENAI',
+    );
+    const responses = prepareRequestBody(
+      { input: 'hello', reasoning_effort: 'high', thinkingConfig: { level: 'high' } },
+      'responses',
+      selectable,
+      'OPENAI',
+    );
+    expect(chat).not.toHaveProperty('reasoning');
+    expect(chat).not.toHaveProperty('reasoning_effort');
+    expect(chat).not.toHaveProperty('thinking');
+    expect(responses).not.toHaveProperty('reasoning');
+    expect(responses).not.toHaveProperty('reasoning_effort');
+    expect(responses).not.toHaveProperty('thinkingConfig');
+  });
+
   it('passes a server-only thinking marker to the Gemini adapter', () => {
     const result = prepareRequestBody(
       {

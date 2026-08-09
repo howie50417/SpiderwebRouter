@@ -9,38 +9,57 @@ import {
 import { Line } from '@ant-design/charts';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { useGetIdentity } from '@refinedev/core';
+import type { DashboardSummary } from '@spiderwebrouter/contracts';
 import { App, Button, Card, Col, Row, Space, Statistic, Tag, Typography } from 'antd';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
-import { apiClient, getSafeError } from '@/api/client';
+import { apiClient, getSafeError, type ApiError } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
-import { useApiResource } from '@/api/hooks';
 import { EmptyState, ErrorState } from '@/components/AsyncState';
 import { PageIntro } from '@/components/PageIntro';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
 import { createCreatedAtColumn } from '@/lib/createdAtColumn';
 import { downloadBlob, formatCompact, formatNumber, formatUsd } from '@/lib/format';
-import type { Identity, ListQuery, UsageRecord, UsageResponse } from '@/types';
+import {
+  buildUsageQuery,
+  createDefaultUsageDateRange,
+  LatestUsageRequest,
+  withoutUsagePagination,
+} from '@/lib/usageQuery';
+import type { Identity, ListQuery, UsageRecord, UsageResponse, UsageSeriesPoint } from '@/types';
+
+const emptySummary: DashboardSummary = {
+  requests: 0,
+  failedRequests: 0,
+  retries: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  amountUsd: '0',
+  averageLatencyMs: 0,
+};
+
+interface UsageOverview {
+  summary: DashboardSummary;
+  series: UsageSeriesPoint[];
+}
+
+const emptyOverview: UsageOverview = { summary: emptySummary, series: [] };
 
 export function UsagePage() {
   const tableRef = useRef<ActionType | undefined>(undefined);
-  const latestFilters = useRef<ListQuery>({});
+  const defaultDateRange = useMemo(() => createDefaultUsageDateRange(), []);
+  const latestFilters = useRef<ListQuery>(buildUsageQuery({}, defaultDateRange));
+  const requestSequence = useRef(new LatestUsageRequest());
   const { data: identity } = useGetIdentity<Identity>();
   const { message } = App.useApp();
   const { locale, tr } = useAppSettings();
   const [exporting, setExporting] = useState(false);
+  const [overview, setOverview] = useState<UsageOverview>(emptyOverview);
+  const [overviewError, setOverviewError] = useState<ApiError>();
   const isAdmin = Boolean(identity?.roles.includes('SUPER_ADMIN'));
   const usageEndpoint = isAdmin ? endpoints.adminUsage : endpoints.myUsage;
-  const overview = useApiResource(
-    (signal) =>
-      apiClient.get<UsageResponse>(
-        usageEndpoint,
-        { page: 1, pageSize: 1, summary: true, series: true, range: '30d' },
-        signal,
-      ),
-    [usageEndpoint],
-  );
 
   const notifyError = (reason: unknown) => {
     const error = getSafeError(reason);
@@ -52,9 +71,7 @@ export function UsagePage() {
     try {
       const blob = await apiClient.download(
         isAdmin ? endpoints.adminUsageCsv : endpoints.myUsageCsv,
-        {
-          ...latestFilters.current,
-        },
+        withoutUsagePagination(latestFilters.current),
       );
       downloadBlob(blob, `spiderwebrouter-usage-${new Date().toISOString().slice(0, 10)}.csv`);
       message.success(tr('CSV 已下載', 'CSV downloaded'));
@@ -163,6 +180,7 @@ export function UsagePage() {
       dataIndex: 'status',
       valueType: 'select',
       valueEnum: {
+        RUNNING: { text: 'Running' },
         SUCCEEDED: { text: 'Succeeded' },
         FAILED: { text: 'Failed' },
         CANCELLED: { text: 'Cancelled' },
@@ -180,8 +198,8 @@ export function UsagePage() {
     },
   ];
 
-  const summary = overview.data?.summary;
-  const chartData = (overview.data?.series ?? []).flatMap((point) => [
+  const { summary } = overview;
+  const chartData = overview.series.flatMap((point) => [
     { date: point.date, metric: tr('請求', 'Requests'), value: point.requests },
     { date: point.date, metric: 'USD', value: point.amountUsd },
   ]);
@@ -197,13 +215,7 @@ export function UsagePage() {
         )}
         actions={
           <>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => {
-                overview.refresh();
-                tableRef.current?.reload();
-              }}
-            >
+            <Button icon={<ReloadOutlined />} onClick={() => tableRef.current?.reload()}>
               {tr('重新整理', 'Refresh')}
             </Button>
             <Button
@@ -218,8 +230,8 @@ export function UsagePage() {
         }
       />
 
-      {overview.error ? (
-        <ErrorState compact error={overview.error} onRetry={overview.refresh} />
+      {overviewError ? (
+        <ErrorState compact error={overviewError} onRetry={() => tableRef.current?.reload()} />
       ) : null}
 
       <Row gutter={[16, 16]}>
@@ -228,9 +240,12 @@ export function UsagePage() {
             <Statistic
               title={tr('請求', 'Requests')}
               prefix={<ApiOutlined />}
-              value={summary?.requests ?? 0}
+              value={summary.requests}
               formatter={(value) => formatCompact(String(value), locale)}
             />
+            <Typography.Text type="secondary">
+              {formatNumber(summary.failedRequests, locale)} {tr('次失敗', 'failed')}
+            </Typography.Text>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
@@ -238,9 +253,13 @@ export function UsagePage() {
             <Statistic
               title="Tokens"
               prefix={<ThunderboltOutlined />}
-              value={summary?.totalTokens ?? 0}
+              value={summary.totalTokens}
               formatter={(value) => formatCompact(String(value), locale)}
             />
+            <Typography.Text type="secondary">
+              {tr('輸入', 'Input')} {formatCompact(summary.inputTokens, locale)} ·{' '}
+              {tr('輸出', 'Output')} {formatCompact(summary.outputTokens, locale)}
+            </Typography.Text>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
@@ -248,7 +267,7 @@ export function UsagePage() {
             <Statistic
               title="USD"
               prefix={<DollarOutlined />}
-              value={Number(summary?.amountUsd ?? 0)}
+              value={Number(summary.amountUsd)}
               formatter={(value) => formatUsd(String(value), locale)}
             />
           </Card>
@@ -258,14 +277,17 @@ export function UsagePage() {
             <Statistic
               title={tr('平均延遲', 'Avg. latency')}
               prefix={<ClockCircleOutlined />}
-              value={summary?.averageLatencyMs ?? 0}
+              value={summary.averageLatencyMs}
               suffix="ms"
             />
+            <Typography.Text type="secondary">
+              {formatNumber(summary.retries, locale)} retries
+            </Typography.Text>
           </Card>
         </Col>
       </Row>
 
-      <Card title={tr('30 天趨勢', '30-day trend')} className="chart-card usage-chart">
+      <Card title={tr('所選期間趨勢', 'Selected-period trend')} className="chart-card usage-chart">
         {chartData.length ? (
           <Line
             data={chartData}
@@ -288,27 +310,32 @@ export function UsagePage() {
         cardBordered
         scroll={{ x: 1_750 }}
         search={{ labelWidth: 'auto', defaultCollapsed: false }}
+        form={{ initialValues: { createdAt: defaultDateRange } }}
         pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-        request={async (params, _sort, filter) => {
-          const dateRange = Array.isArray(params.createdAt) ? params.createdAt : undefined;
-          const query: ListQuery = {
-            page: params.current,
-            pageSize: params.pageSize,
-            user: typeof params.userEmail === 'string' ? params.userEmail : undefined,
-            model: typeof params.model === 'string' ? params.model : undefined,
-            apiKey: typeof params.apiKeyName === 'string' ? params.apiKeyName : undefined,
-            kind: typeof params.kind === 'string' ? params.kind : undefined,
-            source: typeof params.source === 'string' ? params.source : undefined,
-            status: typeof params.status === 'string' ? params.status : undefined,
-            from: dateRange?.[0] ? String(dateRange[0]) : undefined,
-            to: dateRange?.[1] ? String(dateRange[1]) : undefined,
-          };
+        request={async (params) => {
+          const requestId = requestSequence.current.begin();
+          const query = buildUsageQuery(params, defaultDateRange);
           latestFilters.current = query;
           try {
-            const result = await apiClient.list<UsageRecord>(usageEndpoint, query);
-            return { ...result, success: true };
+            const result = await apiClient.get<UsageResponse>(usageEndpoint, query);
+            // ProTable owns its row state separately from our summary cards. A
+            // slower, older filter request must therefore be rejected before
+            // it can hand stale rows back to ProTable as well.
+            if (!requestSequence.current.isLatest(requestId)) {
+              return { data: [], total: 0, success: false };
+            }
+            setOverview({
+              summary: { ...emptySummary, ...result.summary },
+              series: result.series ?? [],
+            });
+            setOverviewError(undefined);
+            return { data: result.data, total: result.total, success: true };
           } catch (error) {
-            notifyError(error);
+            if (requestSequence.current.isLatest(requestId)) {
+              setOverview(emptyOverview);
+              setOverviewError(getSafeError(error));
+              notifyError(error);
+            }
             return { data: [], total: 0, success: false };
           }
         }}
