@@ -104,3 +104,24 @@ describe('batch grant normalization', () => {
     });
   });
 });
+
+describe.each(['/me/usage', '/admin/usage'])('usage normalization for %s', (path) => {
+  it('preserves request timestamps used by the shared usage table', () => {
+    const createdAt = '2026-08-09T11:52:21.970Z';
+    const completedAt = '2026-08-09T11:52:23.708Z';
+    const payload = normalizeApiPayload(path, {
+      data: [
+        {
+          id: 'usage-1',
+          requestId: 'request-1',
+          endpoint: 'responses',
+          modelAlias: 'DeepSeek-V4-Flash-0731',
+          createdAt,
+          completedAt,
+        },
+      ],
+    }) as { data: Array<Record<string, unknown>> };
+
+    expect(payload.data[0]).toMatchObject({ createdAt, completedAt });
+  });
+});

@@ -19,7 +19,8 @@ import { EmptyState, ErrorState } from '@/components/AsyncState';
 import { PageIntro } from '@/components/PageIntro';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
-import { downloadBlob, formatCompact, formatDateTime, formatNumber, formatUsd } from '@/lib/format';
+import { createCreatedAtColumn } from '@/lib/createdAtColumn';
+import { downloadBlob, formatCompact, formatNumber, formatUsd } from '@/lib/format';
 import type { Identity, ListQuery, UsageRecord, UsageResponse } from '@/types';
 
 export function UsagePage() {
@@ -65,14 +66,7 @@ export function UsagePage() {
   };
 
   const columns: ProColumns<UsageRecord>[] = [
-    {
-      title: tr('時間', 'Time'),
-      dataIndex: 'createdAt',
-      valueType: 'dateRange',
-      width: 180,
-      fixed: 'left',
-      renderText: (value) => formatDateTime(value, locale),
-    },
+    createCreatedAtColumn<UsageRecord>(tr('時間', 'Time'), locale, 180),
     ...(isAdmin
       ? ([
           {

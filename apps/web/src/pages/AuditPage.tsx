@@ -12,6 +12,7 @@ import { apiClient, getSafeError } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
 import { PageIntro } from '@/components/PageIntro';
 import { useAppSettings } from '@/context/AppSettings';
+import { createCreatedAtColumn } from '@/lib/createdAtColumn';
 import { formatDateTime } from '@/lib/format';
 import type { AuditRecord } from '@/types';
 import { App } from 'antd';
@@ -23,14 +24,7 @@ export function AuditPage() {
   const [selected, setSelected] = useState<AuditRecord>();
 
   const columns: ProColumns<AuditRecord>[] = [
-    {
-      title: tr('時間', 'Time'),
-      dataIndex: 'createdAt',
-      valueType: 'dateRange',
-      width: 190,
-      fixed: 'left',
-      renderText: (value) => formatDateTime(value, locale),
-    },
+    createCreatedAtColumn<AuditRecord>(tr('時間', 'Time'), locale, 190),
     {
       title: tr('操作者', 'Actor'),
       dataIndex: 'actorEmail',
