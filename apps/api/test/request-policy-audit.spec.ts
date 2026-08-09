@@ -64,9 +64,34 @@ describe('client thinking controls', () => {
       expect(result.think).toBe(expectedThink);
       expect(result).not.toHaveProperty('reasoning_effort');
     } else {
-      expect(result.reasoning_effort).toBe('minimal');
+      expect(result.reasoning_effort).toBe('none');
       expect(result).not.toHaveProperty('think');
     }
+  });
+
+  it.each(['MINIMAL', 'XHIGH', 'MAX'] as const)(
+    'passes the %s server-only reasoning effort to an OpenAI-compatible provider',
+    (thinkingLevel) => {
+      const result = prepareRequestBody(
+        { model: 'alias', messages: [{ role: 'user', content: 'hello' }] },
+        'chat',
+        model({ thinkingLevel }),
+        'GENERIC_OPENAI',
+      );
+
+      expect(result.reasoning_effort).toBe(thinkingLevel.toLowerCase());
+    },
+  );
+
+  it('uses the closest OpenAI-supported effort when the server policy is OFF', () => {
+    const result = prepareRequestBody(
+      { model: 'alias', input: 'hello' },
+      'responses',
+      model({ thinkingLevel: 'OFF' }),
+      'OPENAI',
+    );
+
+    expect(result.reasoning).toEqual({ effort: 'minimal' });
   });
 
   it('passes a server-only thinking marker to the Gemini adapter', () => {

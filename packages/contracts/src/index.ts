@@ -14,7 +14,16 @@ export type ProviderAuthMode = (typeof providerAuthModes)[number];
 export const promptModes = ['NONE', 'PREPEND', 'REPLACE'] as const;
 export type PromptMode = (typeof promptModes)[number];
 
-export const thinkingLevels = ['PROVIDER_DEFAULT', 'OFF', 'LOW', 'MEDIUM', 'HIGH'] as const;
+export const thinkingLevels = [
+  'PROVIDER_DEFAULT',
+  'OFF',
+  'MINIMAL',
+  'LOW',
+  'MEDIUM',
+  'HIGH',
+  'XHIGH',
+  'MAX',
+] as const;
 export type ThinkingLevel = (typeof thinkingLevels)[number];
 
 export const inferenceKinds = ['CHAT', 'RESPONSES', 'EMBEDDINGS'] as const;

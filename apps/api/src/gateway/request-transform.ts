@@ -81,8 +81,9 @@ function applyThinking(
     return;
   }
   if (level === 'OFF') {
-    if (operation === 'responses') body.reasoning = { effort: 'minimal' };
-    else body.reasoning_effort = 'minimal';
+    const effort = providerType === 'OPENAI' ? 'minimal' : 'none';
+    if (operation === 'responses') body.reasoning = { effort };
+    else body.reasoning_effort = effort;
     return;
   }
   if (operation === 'responses') body.reasoning = { effort: level.toLowerCase() };

@@ -26,6 +26,7 @@ import { PageIntro } from '@/components/PageIntro';
 import { EnabledBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatDateTime, formatUsd } from '@/lib/format';
+import { modelAliasPattern } from '@/lib/modelAlias';
 import type { PublishedModel, Role, UserModelGrant, UserRecord } from '@/types';
 
 interface UserFormValues {
@@ -563,8 +564,11 @@ export function UsersPage() {
           rules={[
             { required: true },
             {
-              pattern: /^[A-Za-z0-9._:-]+$/,
-              message: tr('別名格式不正確', 'Invalid alias format'),
+              pattern: modelAliasPattern,
+              message: tr(
+                '別名可使用英數、點、底線、冒號、斜線與連字號',
+                'Use letters, numbers, dot, underscore, colon, slash, or hyphen',
+              ),
             },
           ]}
         />

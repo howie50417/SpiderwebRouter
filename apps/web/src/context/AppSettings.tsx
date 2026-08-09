@@ -13,6 +13,7 @@ export type ColorMode = 'light' | 'dark';
 interface AppSettingsValue {
   locale: AppLocale;
   colorMode: ColorMode;
+  reducedMotion: boolean;
   setLocale: (locale: AppLocale) => void;
   setColorMode: (mode: ColorMode) => void;
   toggleColorMode: () => void;
@@ -37,6 +38,19 @@ export function AppSettingsProvider({ children }: PropsWithChildren) {
       window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     ),
   );
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches),
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!mediaQuery) return;
+
+    const updateReducedMotion = () => setReducedMotion(mediaQuery.matches);
+    updateReducedMotion();
+    mediaQuery.addEventListener('change', updateReducedMotion);
+    return () => mediaQuery.removeEventListener('change', updateReducedMotion);
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = locale === 'zh-TW' ? 'zh-Hant' : 'en';
@@ -66,12 +80,13 @@ export function AppSettingsProvider({ children }: PropsWithChildren) {
     () => ({
       locale,
       colorMode,
+      reducedMotion,
       setLocale,
       setColorMode,
       toggleColorMode: () => setColorMode(colorMode === 'dark' ? 'light' : 'dark'),
       tr: (zh, en) => (locale === 'zh-TW' ? zh : en),
     }),
-    [colorMode, locale],
+    [colorMode, locale, reducedMotion],
   );
 
   return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>;

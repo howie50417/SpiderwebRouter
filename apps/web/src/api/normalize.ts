@@ -1,3 +1,5 @@
+import { thinkingLevels, type ThinkingLevel } from '@spiderwebrouter/contracts';
+
 const capabilityKeys = [
   'chat',
   'responses',
@@ -41,7 +43,77 @@ function numberValue(value: unknown): number {
 
 function normalizeCapabilities(value: unknown): UnknownRecord {
   const source = record(value);
-  return Object.fromEntries(capabilityKeys.map((key) => [key, source[key] === true]));
+  return {
+    ...Object.fromEntries(capabilityKeys.map((key) => [key, source[key] === true])),
+    ...(source.nativeResponses === true ? { nativeResponses: true } : {}),
+  };
+}
+
+function normalizeDiscoveredCapabilities(value: unknown): UnknownRecord {
+  const source = record(value);
+  return {
+    ...Object.fromEntries(
+      capabilityKeys.map((key) => {
+        const raw = source[key];
+        if (raw === true || String(raw).toUpperCase() === 'SUPPORTED') return [key, true];
+        if (raw === false || String(raw).toUpperCase() === 'UNSUPPORTED') return [key, false];
+        return [key, 'unconfirmed'];
+      }),
+    ),
+    ...(source.nativeResponses === true ? { nativeResponses: true } : {}),
+  };
+}
+
+function normalizeDiscoveredMetadata(value: unknown): UnknownRecord {
+  const source = record(value);
+  const validThinkingLevels = new Set<string>(thinkingLevels);
+  const supportedThinkingLevels = Array.isArray(source.supportedThinkingLevels)
+    ? source.supportedThinkingLevels.filter(
+        (level): level is ThinkingLevel =>
+          typeof level === 'string' && validThinkingLevels.has(level),
+      )
+    : [];
+  return {
+    ...source,
+    ...(supportedThinkingLevels.length ? { supportedThinkingLevels } : {}),
+  };
+}
+
+function inferCapabilitySource(value: unknown, metadata: UnknownRecord): string {
+  if (typeof value === 'string' && value) return value;
+  const evidence: UnknownRecord[] = [];
+  collectEvidence(metadata.capabilityEvidence, evidence);
+  const hasStatus = evidence.some((item) =>
+    `${stringValue(item.source)} ${stringValue(item.path)}`.toLowerCase().includes('status'),
+  );
+  const hasMetadata = evidence.some((item) => {
+    const source = stringValue(item.source).toLowerCase();
+    const path = stringValue(item.path).toLowerCase();
+    return (
+      !path.includes('status') &&
+      (source.includes('upstream_metadata') || source.includes('provider_metadata'))
+    );
+  });
+  const hasRouter = evidence.some((item) =>
+    stringValue(item.source).toLowerCase().includes('router_emulation'),
+  );
+  const sources = [hasMetadata, hasStatus, hasRouter].filter(Boolean).length;
+  if (sources > 1) return 'MIXED';
+  if (hasStatus) return 'PROVIDER_STATUS';
+  if (hasMetadata) return 'METADATA';
+  if (hasRouter) return 'ROUTER_EMULATION';
+  return 'UNKNOWN';
+}
+
+function collectEvidence(value: unknown, result: UnknownRecord[]): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectEvidence(entry, result));
+    return;
+  }
+  const source = record(value);
+  if (!Object.keys(source).length) return;
+  if (source.source !== undefined || source.path !== undefined) result.push(source);
+  else Object.values(source).forEach((entry) => collectEvidence(entry, result));
 }
 
 function mapCollection(payload: unknown, mapper: (value: unknown) => unknown): unknown {
@@ -106,12 +178,14 @@ function normalizePublishedModel(value: unknown): unknown {
 function normalizeDiscoveredModel(value: unknown): unknown {
   const source = record(value);
   const provider = record(source.provider);
+  const metadata = normalizeDiscoveredMetadata(source.metadata);
   return {
     ...source,
     providerId: source.providerId ?? provider.id,
     providerName: source.providerName ?? provider.name ?? '—',
-    capabilities: normalizeCapabilities(source.capabilities),
-    capabilitySource: source.capabilitySource ?? 'METADATA',
+    capabilities: normalizeDiscoveredCapabilities(source.capabilities),
+    metadata,
+    capabilitySource: inferCapabilitySource(source.capabilitySource, metadata),
     firstSeenAt: source.firstSeenAt ?? source.createdAt,
     published: source.published ?? false,
   };

@@ -53,7 +53,7 @@ const NotFoundPage = lazy(() =>
 );
 
 function ConsoleApp() {
-  const { colorMode, locale } = useAppSettings();
+  const { colorMode, locale, reducedMotion } = useAppSettings();
   const notificationProvider = useNotificationProvider();
 
   return (
@@ -68,6 +68,7 @@ function ConsoleApp() {
           colorWarning: '#f59e0b',
           colorError: '#ef4444',
           borderRadius: 10,
+          motion: !reducedMotion,
           fontFamily:
             "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         },

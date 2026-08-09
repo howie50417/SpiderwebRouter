@@ -18,6 +18,7 @@ import {
   ProTable,
   type ActionType,
   type ProColumns,
+  type ProFormInstance,
 } from '@ant-design/pro-components';
 import {
   promptModes,
@@ -26,7 +27,7 @@ import {
   type PromptMode,
   type ThinkingLevel,
 } from '@spiderwebrouter/contracts';
-import { App, Button, Popconfirm, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Popconfirm, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
 import { type Key, useRef, useState } from 'react';
 
 import { apiClient, getSafeError } from '@/api/client';
@@ -37,7 +38,14 @@ import { PageIntro } from '@/components/PageIntro';
 import { EnabledBadge } from '@/components/StatusBadge';
 import { useAppSettings } from '@/context/AppSettings';
 import { formatDateTime, formatUsd } from '@/lib/format';
-import type { DiscoveredModel, ProviderRecord, PublishedModel } from '@/types';
+import { modelAliasPattern } from '@/lib/modelAlias';
+import type {
+  DiscoveredModel,
+  DiscoveredModelCapabilities,
+  ProviderRecord,
+  PublishedModel,
+  PublishedModelCapabilities,
+} from '@/types';
 
 const capabilityKeys: (keyof ModelCapabilities)[] = [
   'chat',
@@ -64,25 +72,50 @@ interface ModelFormValues {
   outputPriceUsdPerMillion: number;
 }
 
-function capabilitiesToList(value: Partial<ModelCapabilities>): (keyof ModelCapabilities)[] {
+function capabilitiesToList(
+  value: Partial<ModelCapabilities> | DiscoveredModelCapabilities,
+): (keyof ModelCapabilities)[] {
   return capabilityKeys.filter((key) => value[key] === true);
 }
 
-function listToCapabilities(value: (keyof ModelCapabilities)[]): ModelCapabilities {
-  return Object.fromEntries(
-    capabilityKeys.map((key) => [key, value.includes(key)]),
-  ) as unknown as ModelCapabilities;
+function listToCapabilities(
+  value: (keyof ModelCapabilities)[],
+  nativeResponses = false,
+): PublishedModelCapabilities {
+  return {
+    ...(Object.fromEntries(
+      capabilityKeys.map((key) => [key, value.includes(key)]),
+    ) as unknown as ModelCapabilities),
+    ...(nativeResponses ? { nativeResponses: true } : {}),
+  };
 }
 
-function CapabilityTags({ capabilities }: { capabilities: Partial<ModelCapabilities> }) {
-  const enabled = capabilityKeys.filter((key) => capabilities[key]);
+function CapabilityTags({ capabilities }: { capabilities: DiscoveredModelCapabilities }) {
+  const { tr } = useAppSettings();
+  const supported = capabilityKeys.filter((key) => capabilities[key] === true);
+  const unconfirmed = capabilityKeys.filter(
+    (key) => capabilities[key] === 'unconfirmed' || capabilities[key] === undefined,
+  );
+  const unsupported = capabilityKeys.filter((key) => capabilities[key] === false);
   return (
     <Space size={[2, 4]} wrap>
-      {enabled.length ? (
-        enabled.map((key) => <Tag key={key}>{key}</Tag>)
-      ) : (
-        <Typography.Text type="secondary">—</Typography.Text>
-      )}
+      {supported.map((key) => (
+        <Tag color="green" key={key}>
+          {key}
+        </Tag>
+      ))}
+      {unconfirmed.map((key) => (
+        <Tag color="gold" key={key}>
+          {key} · {tr('待確認', 'unconfirmed')}
+        </Tag>
+      ))}
+      {unsupported.length ? (
+        <Tooltip title={unsupported.join(', ')}>
+          <Tag>
+            {tr('不支援', 'unsupported')} · {unsupported.length}
+          </Tag>
+        </Tooltip>
+      ) : null}
     </Space>
   );
 }
@@ -90,6 +123,7 @@ function CapabilityTags({ capabilities }: { capabilities: Partial<ModelCapabilit
 export function ModelsPage() {
   const publishedRef = useRef<ActionType | undefined>(undefined);
   const candidatesRef = useRef<ActionType | undefined>(undefined);
+  const modelFormRef = useRef<ProFormInstance<ModelFormValues> | undefined>(undefined);
   const { message } = App.useApp();
   const { locale, tr } = useAppSettings();
   const [activeTab, setActiveTab] = useState('published');
@@ -103,6 +137,13 @@ export function ModelsPage() {
     (signal) =>
       apiClient
         .list<ProviderRecord>(endpoints.providers, { pageSize: 200, enabled: true })
+        .then((result) => result.data),
+    [],
+  );
+  const discoveredModels = useApiResource(
+    (signal) =>
+      apiClient
+        .list<DiscoveredModel>(endpoints.modelScanCandidates, { pageSize: 10_000 })
         .then((result) => result.data),
     [],
   );
@@ -123,7 +164,10 @@ export function ModelsPage() {
       if (failed?.status === 'rejected') throw failed.reason;
       message.success(tr('模型掃描已排入工作佇列', 'Model scan has been queued'));
       setActiveTab('candidates');
-      window.setTimeout(() => candidatesRef.current?.reload(), 800);
+      window.setTimeout(() => {
+        candidatesRef.current?.reload();
+        discoveredModels.refresh();
+      }, 800);
     } catch (error) {
       notifyError(error);
     } finally {
@@ -141,7 +185,10 @@ export function ModelsPage() {
           upstreamModelId: candidate.upstreamModelId,
           publicName: candidate.upstreamModelId,
           enabled: false,
-          capabilities: listToCapabilities(capabilitiesToList(candidate.capabilities)),
+          capabilities: listToCapabilities(
+            capabilitiesToList(candidate.capabilities),
+            candidate.capabilities.nativeResponses === true,
+          ),
           promptMode: 'NONE',
           systemPrompt: null,
           thinkingLevel: 'PROVIDER_DEFAULT',
@@ -158,6 +205,7 @@ export function ModelsPage() {
       );
       setSelectedCandidates([]);
       setSelectedCandidateRows([]);
+      discoveredModels.refresh();
       candidatesRef.current?.reload();
       publishedRef.current?.reload();
       setActiveTab('published');
@@ -323,6 +371,9 @@ export function ModelsPage() {
       valueType: 'select',
       valueEnum: {
         METADATA: { text: tr('來源中繼資料', 'Provider metadata') },
+        PROVIDER_STATUS: { text: tr('來源執行狀態', 'Provider runtime status') },
+        ROUTER_EMULATION: { text: tr('Router 轉接能力', 'Router emulation') },
+        MIXED: { text: tr('多種來源', 'Mixed evidence') },
         ADMIN_CONFIRMED: { text: tr('管理員確認', 'Admin confirmed') },
         UNKNOWN: { text: tr('未知', 'Unknown') },
       },
@@ -358,8 +409,8 @@ export function ModelsPage() {
         eyebrow={tr('超管', 'Administration')}
         title={tr('模型目錄', 'Model catalog')}
         description={tr(
-          '掃描僅讀取模型中繼資料，不會發送可能計費的推理。候選模型必須由你選取、確認能力並發布。',
-          'Scanning reads model metadata only and never sends billable inference. You choose, verify, and publish each candidate.',
+          '掃描只讀取模型中繼資料，不會發送可能計費的推理。綠色能力會自動預選，黃色問號代表來源未提供足夠證據，發布前仍需由你確認。',
+          'Scanning reads model metadata only and never sends billable inference. Green capabilities are preselected; a yellow question mark means the provider did not supply enough evidence and needs your review.',
         )}
         actions={
           <>
@@ -499,6 +550,7 @@ export function ModelsPage() {
 
       <DrawerForm<ModelFormValues>
         key={editing?.id ?? 'new-model'}
+        formRef={modelFormRef}
         title={
           editing ? tr('設定模型', 'Configure model') : tr('建立自訂模型', 'Create custom model')
         }
@@ -537,7 +589,10 @@ export function ModelsPage() {
           try {
             const payload = {
               ...values,
-              capabilities: listToCapabilities(values.capabilities ?? []),
+              capabilities: listToCapabilities(
+                values.capabilities ?? [],
+                editing?.capabilities.nativeResponses === true,
+              ),
               systemPrompt: values.promptMode === 'NONE' ? null : values.systemPrompt,
               inputPriceUsdPerMillion: String(values.inputPriceUsdPerMillion ?? 0),
               outputPriceUsdPerMillion: String(values.outputPriceUsdPerMillion ?? 0),
@@ -590,19 +645,62 @@ export function ModelsPage() {
           rules={[
             { required: true },
             {
-              pattern: /^[A-Za-z0-9._:-]+$/,
+              pattern: modelAliasPattern,
               message: tr(
-                '只可使用英數、點、底線、冒號與連字號',
-                'Use letters, numbers, dot, underscore, colon, or hyphen',
+                '只可使用英數、點、底線、冒號、斜線與連字號',
+                'Use letters, numbers, dot, underscore, colon, slash, or hyphen',
               ),
             },
           ]}
         />
-        <ProFormCheckbox.Group
-          name="capabilities"
-          label={tr('已確認能力', 'Confirmed capabilities')}
-          options={capabilityKeys.map((value) => ({ label: value, value }))}
-        />
+        <ProFormDependency name={['providerId', 'upstreamModelId']}>
+          {({ providerId, upstreamModelId }) => {
+            const discovered = (discoveredModels.data ?? []).find(
+              (candidate) =>
+                candidate.providerId === providerId &&
+                candidate.upstreamModelId === upstreamModelId,
+            );
+            const confirmedCapabilities = discovered
+              ? capabilitiesToList(discovered.capabilities)
+              : [];
+            return (
+              <>
+                <ProFormCheckbox.Group
+                  name="capabilities"
+                  label={tr('已確認能力', 'Confirmed capabilities')}
+                  options={capabilityKeys.map((value) => {
+                    const state = discovered?.capabilities[value];
+                    return {
+                      value,
+                      label: discovered
+                        ? state === true
+                          ? tr(`${value}（來源確認）`, `${value} (provider-confirmed)`)
+                          : state === false
+                            ? tr(`${value}（來源不支援）`, `${value} (provider-unsupported)`)
+                            : tr(`${value}（待確認）`, `${value} (unconfirmed)`)
+                        : value,
+                    };
+                  })}
+                />
+                {confirmedCapabilities.length ? (
+                  <Button
+                    size="small"
+                    style={{ marginBottom: 16 }}
+                    onClick={() => {
+                      const fieldValue = modelFormRef.current?.getFieldValue('capabilities');
+                      const current = Array.isArray(fieldValue) ? fieldValue : [];
+                      modelFormRef.current?.setFieldValue('capabilities', [
+                        ...new Set([...current, ...confirmedCapabilities]),
+                      ]);
+                    }}
+                  >
+                    {tr('套用來源已確認能力', 'Apply provider-confirmed capabilities')}
+                  </Button>
+                ) : null}
+              </>
+            );
+          }}
+        </ProFormDependency>
         <ProFormSelect
           name="promptMode"
           label="System prompt mode"
@@ -621,13 +719,55 @@ export function ModelsPage() {
             ) : null
           }
         </ProFormDependency>
-        <ProFormSelect
-          name="thinkingLevel"
-          label={tr('伺服器 Thinking 強度', 'Server-controlled thinking')}
-          options={thinkingLevels.map((value) => ({ label: value, value }))}
-          tooltip={tr('此設定不會開放給客戶覆寫。', 'Customers cannot override this setting.')}
-          rules={[{ required: true }]}
-        />
+        <ProFormDependency name={['providerId', 'upstreamModelId']}>
+          {({ providerId, upstreamModelId }) => {
+            const discovered = (discoveredModels.data ?? []).find(
+              (candidate) =>
+                candidate.providerId === providerId &&
+                candidate.upstreamModelId === upstreamModelId,
+            );
+            const confirmed = new Set(discovered?.metadata.supportedThinkingLevels ?? []);
+            const hasConfirmedLevels = confirmed.size > 0;
+            return (
+              <>
+                <ProFormSelect
+                  name="thinkingLevel"
+                  label={tr('伺服器 Thinking 強度', 'Server-controlled thinking')}
+                  options={thinkingLevels.map((value) => ({
+                    value,
+                    label:
+                      value === 'PROVIDER_DEFAULT'
+                        ? tr('Provider 預設（建議）', 'Provider default (recommended)')
+                        : confirmed.has(value)
+                          ? tr(`${value}（來源確認）`, `${value} (provider-confirmed)`)
+                          : tr(`${value}（未確認）`, `${value} (unconfirmed)`),
+                  }))}
+                  tooltip={tr(
+                    '此設定不會開放給客戶覆寫。只有來源明確提供的檔位才會標為已確認。',
+                    'Customers cannot override this setting. A level is marked confirmed only when the provider explicitly reports it.',
+                  )}
+                  rules={[{ required: true }]}
+                />
+                <Alert
+                  type={hasConfirmedLevels ? 'info' : 'warning'}
+                  showIcon
+                  message={
+                    hasConfirmedLevels
+                      ? tr(
+                          `來源明確回報的 Thinking 檔位：${[...confirmed].join('、')}`,
+                          `Provider-confirmed thinking levels: ${[...confirmed].join(', ')}`,
+                        )
+                      : tr(
+                          '模型清單沒有回報可用的 Thinking 檔位；Provider 預設最安全。其他檔位仍可手動指定，但上游可能忽略或拒絕。',
+                          'The model list did not report supported thinking levels. Provider default is safest; other levels may still be selected manually, but the upstream may ignore or reject them.',
+                        )
+                  }
+                  style={{ marginBottom: 16 }}
+                />
+              </>
+            );
+          }}
+        </ProFormDependency>
         <ProFormDigit
           name="maxRetries"
           label={tr('Retry 次數', 'Retry count')}

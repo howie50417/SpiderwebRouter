@@ -34,16 +34,38 @@ export interface ProviderRecord {
   updatedAt: string;
 }
 
+export type DiscoveredCapabilityState = boolean | 'unconfirmed';
+
+export type DiscoveredModelCapabilities = Partial<
+  Record<keyof ModelCapabilities, DiscoveredCapabilityState>
+> & {
+  /** Internal routing hint. It is not shown as a customer-facing capability. */
+  nativeResponses?: boolean;
+};
+
+export interface DiscoveredModelMetadata extends Record<string, unknown> {
+  supportedThinkingLevels?: ThinkingLevel[];
+}
+
+export type CapabilitySource =
+  'METADATA' | 'PROVIDER_STATUS' | 'ROUTER_EMULATION' | 'MIXED' | 'ADMIN_CONFIRMED' | 'UNKNOWN';
+
 export interface DiscoveredModel {
   id: string;
   providerId: string;
   providerName: string;
   upstreamModelId: string;
-  capabilities: Partial<ModelCapabilities>;
-  capabilitySource: 'METADATA' | 'ADMIN_CONFIRMED' | 'UNKNOWN';
+  capabilities: DiscoveredModelCapabilities;
+  metadata: DiscoveredModelMetadata;
+  capabilitySource: CapabilitySource;
   firstSeenAt: string;
   lastSeenAt: string;
   published: boolean;
+}
+
+export interface PublishedModelCapabilities extends ModelCapabilities {
+  /** Internal routing hint retained while administrators edit the model. */
+  nativeResponses?: boolean;
 }
 
 export interface PublishedModel {
@@ -53,7 +75,7 @@ export interface PublishedModel {
   upstreamModelId: string;
   publicName: string;
   enabled: boolean;
-  capabilities: ModelCapabilities;
+  capabilities: PublishedModelCapabilities;
   promptMode: PromptMode;
   systemPrompt?: string | null;
   thinkingLevel: ThinkingLevel;

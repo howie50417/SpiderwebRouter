@@ -29,10 +29,28 @@ export interface AdapterResult {
   requestedStream: boolean;
 }
 
+export const MODEL_CAPABILITY_KEYS = [
+  'chat',
+  'responses',
+  'embeddings',
+  'vision',
+  'tools',
+  'structuredOutput',
+  'streaming',
+  'reasoning',
+] as const;
+
+export type ModelCapabilityKey = (typeof MODEL_CAPABILITY_KEYS)[number];
+export type ScannedCapabilityState = boolean | 'unconfirmed';
+export type ScannedModelCapabilities = Record<ModelCapabilityKey, ScannedCapabilityState> & {
+  /** Internal execution hint. `responses` describes the Router-facing capability. */
+  nativeResponses: boolean;
+};
+
 export interface ScannedModel {
   upstreamModelId: string;
   displayName?: string;
-  capabilities: Record<string, boolean | string>;
+  capabilities: ScannedModelCapabilities;
   metadata?: Record<string, unknown>;
 }
 
