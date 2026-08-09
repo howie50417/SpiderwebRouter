@@ -1,0 +1,341 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["app"]
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+
+  @@schema("app")
+}
+
+enum ProviderType {
+  OPENAI
+  GENERIC_OPENAI
+  GEMINI
+  OLLAMA
+  OPEN_WEBUI
+
+  @@schema("app")
+}
+
+enum ProviderAuthMode {
+  NONE
+  BEARER
+  API_KEY
+
+  @@schema("app")
+}
+
+enum HealthStatus {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+
+  @@schema("app")
+}
+
+enum PromptMode {
+  NONE
+  PREPEND
+  REPLACE
+
+  @@schema("app")
+}
+
+enum ThinkingLevel {
+  PROVIDER_DEFAULT
+  OFF
+  LOW
+  MEDIUM
+  HIGH
+
+  @@schema("app")
+}
+
+enum ScanStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+
+  @@schema("app")
+}
+
+enum RequestSource {
+  API
+  PLAYGROUND
+  DOCS
+
+  @@schema("app")
+}
+
+enum RequestStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+
+  @@schema("app")
+}
+
+enum AttemptStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+
+  @@schema("app")
+}
+
+model User {
+  id               String             @id @default(uuid()) @db.Uuid
+  keycloakSubject  String?            @unique @map("keycloak_subject")
+  email            String             @unique
+  displayName      String?            @map("display_name")
+  role             UserRole           @default(USER)
+  active           Boolean            @default(true)
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  grants           UserModelGrant[]
+  apiKeys          ApiKey[]
+  inferenceRequests InferenceRequest[]
+  usageRollups     UsageDailyRollup[]
+  auditLogs        AuditLog[]          @relation("AuditActor")
+
+  @@index([role, active])
+  @@map("users")
+  @@schema("app")
+}
+
+model ProviderConnection {
+  id                  String            @id @default(uuid()) @db.Uuid
+  name                String            @unique
+  type                ProviderType
+  baseUrl             String            @map("base_url")
+  authMode            ProviderAuthMode  @default(BEARER) @map("auth_mode")
+  encryptedSecret     String?           @map("encrypted_secret")
+  timeoutMs           Int               @default(120000) @map("timeout_ms")
+  active              Boolean           @default(true)
+  healthStatus        HealthStatus      @default(UNKNOWN) @map("health_status")
+  lastHealthCheckAt   DateTime?         @map("last_health_check_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  discoveredModels    DiscoveredModel[]
+  scanJobs            ScanJob[]
+  publishedModels     PublishedModel[]
+  attempts            ProviderAttempt[]
+
+  @@index([type, active])
+  @@map("provider_connections")
+  @@schema("app")
+}
+
+model DiscoveredModel {
+  id                 String             @id @default(uuid()) @db.Uuid
+  providerId         String             @db.Uuid @map("provider_id")
+  upstreamModelId    String             @map("upstream_model_id")
+  displayName        String?            @map("display_name")
+  capabilities       Json?
+  metadata           Json?
+  available          Boolean            @default(true)
+  firstSeenAt        DateTime            @default(now()) @map("first_seen_at")
+  lastSeenAt         DateTime            @default(now()) @map("last_seen_at")
+  provider           ProviderConnection @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, upstreamModelId])
+  @@index([providerId, available])
+  @@map("discovered_models")
+  @@schema("app")
+}
+
+model ScanJob {
+  id             String             @id @default(uuid()) @db.Uuid
+  providerId     String             @db.Uuid @map("provider_id")
+  status         ScanStatus         @default(PENDING)
+  discoveredCount Int               @default(0) @map("discovered_count")
+  safeErrorCode  String?            @map("safe_error_code")
+  startedAt      DateTime?          @map("started_at")
+  finishedAt     DateTime?          @map("finished_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  provider       ProviderConnection @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, createdAt])
+  @@map("scan_jobs")
+  @@schema("app")
+}
+
+model PublishedModel {
+  id                  String             @id @default(uuid()) @db.Uuid
+  providerId          String             @db.Uuid @map("provider_id")
+  upstreamModelId     String             @map("upstream_model_id")
+  defaultAlias        String             @unique @map("default_alias")
+  displayName         String?            @map("display_name")
+  active              Boolean            @default(true)
+  capabilities        Json
+  promptMode          PromptMode         @default(NONE) @map("prompt_mode")
+  systemPrompt        String?            @map("system_prompt") @db.Text
+  thinkingLevel       ThinkingLevel      @default(PROVIDER_DEFAULT) @map("thinking_level")
+  maxRetries          Int                @default(0) @map("max_retries")
+  inputPricePerM      Decimal            @default(0) @map("input_price_per_m") @db.Decimal(20, 8)
+  outputPricePerM     Decimal            @default(0) @map("output_price_per_m") @db.Decimal(20, 8)
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  provider            ProviderConnection @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  grants              UserModelGrant[]
+  inferenceRequests   InferenceRequest[]
+  usageRollups        UsageDailyRollup[]
+
+  @@index([providerId, upstreamModelId])
+  @@index([active])
+  @@map("published_models")
+  @@schema("app")
+}
+
+model UserModelGrant {
+  id                  String         @id @default(uuid()) @db.Uuid
+  userId              String         @db.Uuid @map("user_id")
+  publishedModelId    String         @db.Uuid @map("published_model_id")
+  alias               String
+  active              Boolean        @default(true)
+  customInputPricePerM Decimal?       @map("custom_input_price_per_m") @db.Decimal(20, 8)
+  customOutputPricePerM Decimal?      @map("custom_output_price_per_m") @db.Decimal(20, 8)
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publishedModel      PublishedModel @relation(fields: [publishedModelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, alias])
+  @@unique([userId, publishedModelId])
+  @@index([userId, active])
+  @@map("user_model_grants")
+  @@schema("app")
+}
+
+model ApiKey {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @db.Uuid @map("user_id")
+  name               String
+  keyHash            String             @unique @map("key_hash")
+  prefix             String
+  lastFour           String             @map("last_four")
+  active             Boolean            @default(true)
+  expiresAt          DateTime?          @map("expires_at")
+  lastUsedAt         DateTime?          @map("last_used_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  revokedAt          DateTime?          @map("revoked_at")
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inferenceRequests  InferenceRequest[]
+  usageRollups       UsageDailyRollup[]
+
+  @@index([userId, active])
+  @@map("api_keys")
+  @@schema("app")
+}
+
+model InferenceRequest {
+  id                    String          @id @default(uuid()) @db.Uuid
+  requestId             String          @unique @map("request_id")
+  userId                String          @db.Uuid @map("user_id")
+  apiKeyId              String?         @db.Uuid @map("api_key_id")
+  publishedModelId      String          @db.Uuid @map("published_model_id")
+  endpoint              String
+  source                RequestSource   @default(API)
+  modelAlias            String          @map("model_alias")
+  streamed              Boolean         @default(false)
+  status                RequestStatus   @default(RUNNING)
+  inputTokens           Int             @default(0) @map("input_tokens")
+  cachedInputTokens     Int             @default(0) @map("cached_input_tokens")
+  outputTokens          Int             @default(0) @map("output_tokens")
+  reasoningTokens       Int             @default(0) @map("reasoning_tokens")
+  usageEstimated        Boolean         @default(false) @map("usage_estimated")
+  inputPriceSnapshot    Decimal         @map("input_price_snapshot") @db.Decimal(20, 8)
+  outputPriceSnapshot   Decimal         @map("output_price_snapshot") @db.Decimal(20, 8)
+  costUsd               Decimal         @default(0) @map("cost_usd") @db.Decimal(30, 12)
+  retryCount            Int             @default(0) @map("retry_count")
+  safeErrorCode         String?         @map("safe_error_code")
+  latencyMs             Int?            @map("latency_ms")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  completedAt           DateTime?       @map("completed_at")
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  apiKey                ApiKey?         @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  publishedModel        PublishedModel  @relation(fields: [publishedModelId], references: [id], onDelete: Restrict)
+  attempts              ProviderAttempt[]
+
+  @@index([userId, createdAt])
+  @@index([publishedModelId, createdAt])
+  @@index([status, createdAt])
+  @@map("inference_requests")
+  @@schema("app")
+}
+
+model ProviderAttempt {
+  id                  String             @id @default(uuid()) @db.Uuid
+  inferenceRequestId  String             @db.Uuid @map("inference_request_id")
+  providerId          String             @db.Uuid @map("provider_id")
+  attemptNumber       Int                @map("attempt_number")
+  status              AttemptStatus      @default(RUNNING)
+  upstreamStatus      Int?               @map("upstream_status")
+  errorCategory       String?            @map("error_category")
+  upstreamErrorCode   String?            @map("upstream_error_code")
+  retryable           Boolean            @default(false)
+  inputTokens         Int?               @map("input_tokens")
+  outputTokens        Int?               @map("output_tokens")
+  latencyMs           Int?               @map("latency_ms")
+  startedAt           DateTime           @default(now()) @map("started_at")
+  completedAt         DateTime?          @map("completed_at")
+  inferenceRequest    InferenceRequest   @relation(fields: [inferenceRequestId], references: [id], onDelete: Cascade)
+  provider            ProviderConnection @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  @@unique([inferenceRequestId, attemptNumber])
+  @@index([providerId, startedAt])
+  @@map("provider_attempts")
+  @@schema("app")
+}
+
+model UsageDailyRollup {
+  id                String         @id @default(uuid()) @db.Uuid
+  usageDate         DateTime       @db.Date @map("usage_date")
+  userId            String         @db.Uuid @map("user_id")
+  apiKeyId          String?        @db.Uuid @map("api_key_id")
+  publishedModelId  String         @db.Uuid @map("published_model_id")
+  requestCount      Int            @default(0) @map("request_count")
+  errorCount        Int            @default(0) @map("error_count")
+  retryCount        Int            @default(0) @map("retry_count")
+  inputTokens       BigInt         @default(0) @map("input_tokens")
+  outputTokens      BigInt         @default(0) @map("output_tokens")
+  costUsd           Decimal        @default(0) @map("cost_usd") @db.Decimal(30, 12)
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey            ApiKey?        @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  publishedModel    PublishedModel @relation(fields: [publishedModelId], references: [id], onDelete: Cascade)
+
+  @@unique([usageDate, userId, apiKeyId, publishedModelId])
+  @@index([usageDate, userId])
+  @@map("usage_daily_rollups")
+  @@schema("app")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  requestId   String?  @map("request_id")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+  @@schema("app")
+}

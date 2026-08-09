@@ -1,0 +1,43 @@
+{
+  "name": "@spiderwebrouter/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpiderwebRouter control plane and OpenAI-compatible gateway",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start:prod": "node dist/main.js",
+    "worker": "node dist/worker.js",
+    "bootstrap": "node dist/bootstrap.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-fastify": "^11.1.6",
+    "@nestjs/swagger": "^11.2.0",
+    "@prisma/client": "^6.14.0",
+    "bullmq": "^5.58.5",
+    "fastify": "^5.5.0",
+    "ioredis": "^5.7.0",
+    "jose": "^6.1.0",
+    "pino": "^9.9.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "prisma": "^6.14.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

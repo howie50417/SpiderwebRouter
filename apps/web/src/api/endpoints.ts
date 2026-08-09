@@ -1,0 +1,31 @@
+const admin = '/admin';
+const me = '/me';
+
+export const endpoints = {
+  identity: me,
+  dashboard: `${admin}/dashboard`,
+  providers: `${admin}/providers`,
+  provider: (id: string) => `${admin}/providers/${encodeURIComponent(id)}`,
+  providerTest: (id: string) => `${admin}/providers/${encodeURIComponent(id)}/test`,
+  providerScan: (id: string) => `${admin}/providers/${encodeURIComponent(id)}/scan`,
+  modelScanCandidates: `${admin}/discovered-models`,
+  publishedModels: `${admin}/models`,
+  publishedModel: (id: string) => `${admin}/models/${encodeURIComponent(id)}`,
+  users: `${admin}/users`,
+  user: (id: string) => `${admin}/users/${encodeURIComponent(id)}`,
+  grants: `${admin}/grants`,
+  userGrants: (id: string) => `${admin}/grants?userId=${encodeURIComponent(id)}`,
+  userGrant: (_userId: string, grantId: string) => `${admin}/grants/${encodeURIComponent(grantId)}`,
+  adminUsage: `${admin}/usage`,
+  adminUsageCsv: `${admin}/usage.csv`,
+  audit: `${admin}/audit`,
+  myUsage: `${me}/usage`,
+  myUsageCsv: `${me}/usage.csv`,
+  myApiKeys: `${me}/api-keys`,
+  myApiKey: (id: string) => `${me}/api-keys/${encodeURIComponent(id)}`,
+  myModels: `${me}/models`,
+  playgroundChat: `${me}/playground/chat`,
+  playgroundResponses: `${me}/playground/responses`,
+  playgroundEmbeddings: `${me}/playground/embeddings`,
+  openapi: '/openapi.json',
+} as const;

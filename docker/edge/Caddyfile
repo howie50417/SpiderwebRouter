@@ -1,0 +1,55 @@
+{
+	auto_https off
+	admin off
+
+	servers {
+		trusted_proxies static {$TRUSTED_PROXY_CIDRS:private_ranges}
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For X-Real-IP
+	}
+}
+
+:80 {
+	encode zstd gzip
+
+	@health path /healthz
+	respond @health "ok" 200
+
+	handle /v1* {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle /api* {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
+	@keycloak path /auth/realms/spiderwebrouter/* /auth/resources/* /auth/js/*
+	handle @keycloak {
+		reverse_proxy keycloak:8080
+	}
+
+	handle /auth* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+
+		header {
+			X-Content-Type-Options nosniff
+			Referrer-Policy strict-origin-when-cross-origin
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			-Server
+		}
+
+		@immutable path /assets/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-store"
+		file_server
+	}
+}

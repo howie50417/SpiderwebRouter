@@ -1,0 +1,72 @@
+{
+  "realm": "spiderwebrouter",
+  "displayName": "SpiderwebRouter",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "roles": {
+    "realm": [
+      {
+        "name": "SUPER_ADMIN",
+        "description": "Full SpiderwebRouter administration access"
+      },
+      {
+        "name": "USER",
+        "description": "SpiderwebRouter customer access"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "${OIDC_CLIENT_ID}",
+      "name": "SpiderwebRouter Web BFF",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "frontchannelLogout": true,
+      "rootUrl": "${PUBLIC_BASE_URL}",
+      "baseUrl": "${PUBLIC_BASE_URL}",
+      "redirectUris": ["${PUBLIC_BASE_URL}/auth/callback", "${PUBLIC_BASE_URL}/*"],
+      "webOrigins": ["${PUBLIC_BASE_URL}"],
+      "attributes": {
+        "post.logout.redirect.uris": "${PUBLIC_BASE_URL}/*",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocol": "openid-connect"
+    }
+  ],
+  "requiredActions": [
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 30
+    },
+    {
+      "alias": "CONFIGURE_TOTP",
+      "name": "Configure OTP",
+      "providerId": "CONFIGURE_TOTP",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 10
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+.git
+.github
+.env
+secrets
+node_modules
+**/node_modules
+.pnpm-store
+**/dist
+coverage
+logs
+.cache
+*.log
+*.tsbuildinfo
+ai.txt

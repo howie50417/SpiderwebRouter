@@ -1,0 +1,29 @@
+ai.txt
+
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Runtime configuration and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+secrets/
+*.pem
+*.key
+
+# Logs and generated files
+logs/
+*.log
+.cache/
+.turbo/
+
+# IDE / operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,357 @@
+name: ${COMPOSE_PROJECT_NAME:-spiderwebrouter}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+    compress: 'true'
+
+x-api-environment: &api-environment
+  NODE_ENV: production
+  PORT: ${API_PORT:-3000}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Run scripts/init-env before starting the stack}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: '5432'
+  POSTGRES_USER: ${POSTGRES_USER:-spiderwebrouter}
+  POSTGRES_DB: ${POSTGRES_DB:-spiderwebrouter}
+  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+  REDIS_PASSWORD_FILE: /run/secrets/redis_password
+  SESSION_SECRET_FILE: /run/secrets/session_secret
+  API_KEY_PEPPER_FILE: /run/secrets/api_key_pepper
+  PROVIDER_ENCRYPTION_KEY_FILE: /run/secrets/provider_encryption_key
+  KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-kcadmin}
+  KEYCLOAK_ADMIN_PASSWORD_FILE: /run/secrets/keycloak_admin_password
+  KEYCLOAK_CLIENT_SECRET_FILE: /run/secrets/keycloak_client_secret
+  OIDC_CLIENT_SECRET_FILE: /run/secrets/keycloak_client_secret
+  OIDC_REALM: spiderwebrouter
+  OIDC_CLIENT_ID: spiderwebrouter-web
+  OIDC_ISSUER_URL: ${PUBLIC_BASE_URL:?Run scripts/init-env before starting the stack}/auth/realms/spiderwebrouter
+  OIDC_JWKS_URL: http://keycloak:8080/auth/realms/spiderwebrouter/protocol/openid-connect/certs
+  KEYCLOAK_BASE_URL: http://keycloak:8080/auth
+  INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?Run scripts/init-env before starting the stack}
+  INITIAL_ADMIN_PASSWORD_FILE: /run/secrets/initial_admin_password
+  UPSTREAM_REQUEST_TIMEOUT_MS: ${UPSTREAM_REQUEST_TIMEOUT_MS:-120000}
+  ALLOWED_HTTP_PROVIDER_HOSTS: ${ALLOWED_HTTP_PROVIDER_HOSTS:-}
+  ALLOWED_HTTP_HOSTS: ${ALLOWED_HTTP_PROVIDER_HOSTS:-}
+
+x-api-secrets: &api-secrets
+  - postgres_password
+  - redis_password
+  - session_secret
+  - api_key_pepper
+  - provider_encryption_key
+  - keycloak_admin_password
+  - keycloak_client_secret
+  - initial_admin_password
+
+services:
+  edge:
+    build:
+      context: .
+      dockerfile: docker/edge/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    environment:
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-private_ranges}
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - gateway
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    restart: unless-stopped
+    environment: *api-environment
+    secrets: *api-secrets
+    expose:
+      - '3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - gateway
+      - data
+      - egress
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 2m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging: *default-logging
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command: ['node', 'apps/api/dist/worker.js']
+    restart: unless-stopped
+    environment: *api-environment
+    secrets: *api-secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - egress
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 2m
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'try{process.kill(1,0)}catch{process.exit(1)}']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command:
+      - apps/api/node_modules/.bin/prisma
+      - migrate
+      - deploy
+      - --schema
+      - apps/api/prisma/schema.prisma
+    restart: 'no'
+    environment: *api-environment
+    secrets: *api-secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command: ['node', 'apps/api/dist/bootstrap.js']
+    restart: 'no'
+    environment: *api-environment
+    secrets: *api-secrets
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    networks:
+      - gateway
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  postgres:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spiderwebrouter}
+      POSTGRES_DB: ${POSTGRES_DB:-spiderwebrouter}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak}
+      KEYCLOAK_DB_PASSWORD_FILE: /run/secrets/keycloak_db_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - postgres_password
+      - keycloak_db_password
+    expose:
+      - '5432'
+    networks:
+      - data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *default-logging
+
+  redis:
+    build:
+      context: .
+      dockerfile: docker/redis/Dockerfile
+    restart: unless-stopped
+    secrets:
+      - redis_password
+    expose:
+      - '6379'
+    networks:
+      - data
+    volumes:
+      - redis_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli ping | grep -q PONG',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *default-logging
+
+  keycloak:
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD_FILE: /run/secrets/keycloak_db_password
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-kcadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/keycloak_admin_password
+      KC_CLIENT_SECRET_FILE: /run/secrets/keycloak_client_secret
+      KC_HTTP_ENABLED: 'true'
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HOSTNAME: ${PUBLIC_BASE_URL:?Run scripts/init-env before starting the stack}/auth
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME_STRICT: 'true'
+      KC_HEALTH_ENABLED: 'true'
+      KC_METRICS_ENABLED: 'true'
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Run scripts/init-env before starting the stack}
+      OIDC_REALM: spiderwebrouter
+      OIDC_CLIENT_ID: spiderwebrouter-web
+    secrets:
+      - keycloak_db_password
+      - keycloak_admin_password
+      - keycloak_client_secret
+    expose:
+      - '8080'
+      - '9000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gateway
+      - data
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -ec
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000;
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
+          grep -q 'HTTP/1.1 200' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    logging: *default-logging
+
+secrets:
+  postgres_password:
+    file: ${SECRETS_DIR:-./secrets}/postgres_password
+  keycloak_db_password:
+    file: ${SECRETS_DIR:-./secrets}/keycloak_db_password
+  redis_password:
+    file: ${SECRETS_DIR:-./secrets}/redis_password
+  keycloak_admin_password:
+    file: ${SECRETS_DIR:-./secrets}/keycloak_admin_password
+  keycloak_client_secret:
+    file: ${SECRETS_DIR:-./secrets}/keycloak_client_secret
+  session_secret:
+    file: ${SECRETS_DIR:-./secrets}/session_secret
+  api_key_pepper:
+    file: ${SECRETS_DIR:-./secrets}/api_key_pepper
+  provider_encryption_key:
+    file: ${SECRETS_DIR:-./secrets}/provider_encryption_key
+  initial_admin_password:
+    file: ${SECRETS_DIR:-./secrets}/initial_admin_password
+
+volumes:
+  postgres_data:
+  redis_data:
+  keycloak_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  gateway:
+  data:
+    internal: true
+  egress:

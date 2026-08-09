@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+.pnpm-store
+pnpm-lock.yaml
+apps/api/prisma/migrations
+docker/keycloak/import
