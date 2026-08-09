@@ -8,13 +8,17 @@ ENV_FILE="${REPO_ROOT}/.env"
 ENV_TEMPLATE="${REPO_ROOT}/.env.example"
 DEFAULT_SECRETS_DIR="${REPO_ROOT}/secrets"
 TEMP_DIR=""
+SECRET_NAMES=(
+  postgres_password keycloak_db_password redis_password
+  keycloak_admin_password keycloak_client_secret session_secret
+  api_key_pepper provider_encryption_key initial_admin_password
+)
 
 cleanup() {
   if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
     rm -rf -- "$TEMP_DIR"
   fi
 }
-trap cleanup EXIT
 
 die() {
   printf 'Error: %s\n' "$1" >&2
@@ -84,6 +88,44 @@ resolve_secrets_dir() {
   fi
 }
 
+validated_secrets_dir() {
+  local configured="$1"
+  local candidate
+  candidate="$(resolve_secrets_dir "$configured")"
+
+  [[ -d "$candidate" && ! -L "$candidate" ]] \
+    || die "Secrets directory ${candidate} must be a real directory, not a symlink."
+
+  local canonical
+  canonical="$(cd -- "$candidate" && pwd -P)"
+  [[ "$canonical" != "/" && "$canonical" != "$REPO_ROOT" ]] \
+    || die "Refusing to use a filesystem or repository root as SECRETS_DIR."
+
+  local secret_name secret_path
+  for secret_name in "${SECRET_NAMES[@]}"; do
+    secret_path="${canonical}/${secret_name}"
+    [[ -f "$secret_path" && ! -L "$secret_path" && -s "$secret_path" ]] \
+      || die "Required secret ${secret_path} must be a non-empty regular file, not a symlink."
+  done
+
+  printf '%s' "$canonical"
+}
+
+repair_secret_permissions() {
+  local environment_file="$1"
+  local secrets_dir="$2"
+  local secret_name
+
+  # Local Docker Compose secrets are bind mounts and preserve source modes.
+  # The 0700 directory protects the files on the host; 0644 lets arbitrary
+  # non-root container UIDs read only the individually mounted secret files.
+  chmod 600 -- "$environment_file"
+  chmod 700 -- "$secrets_dir"
+  for secret_name in "${SECRET_NAMES[@]}"; do
+    chmod 644 -- "${secrets_dir}/${secret_name}"
+  done
+}
+
 validate_existing_environment() {
   local required_keys=(
     PUBLIC_BASE_URL TRUSTED_PROXY_CIDRS INITIAL_ADMIN_EMAIL SECRETS_DIR
@@ -103,18 +145,7 @@ validate_existing_environment() {
   [[ "$(env_value INITIAL_ADMIN_EMAIL)" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] \
     || die "INITIAL_ADMIN_EMAIL is not a valid email address."
 
-  local secrets_dir
-  secrets_dir="$(resolve_secrets_dir "$(env_value SECRETS_DIR)")"
-  local secret_names=(
-    postgres_password keycloak_db_password redis_password
-    keycloak_admin_password keycloak_client_secret session_secret
-    api_key_pepper provider_encryption_key initial_admin_password
-  )
-  local secret_name
-  for secret_name in "${secret_names[@]}"; do
-    [[ -s "${secrets_dir}/${secret_name}" ]] \
-      || die "Required secret file ${secrets_dir}/${secret_name} is missing or empty."
-  done
+  validated_secrets_dir "$(env_value SECRETS_DIR)"
 }
 
 random_hex() {
@@ -147,80 +178,95 @@ write_environment_file() {
   done < "$ENV_TEMPLATE" > "$destination"
 }
 
-cd "$REPO_ROOT"
-check_docker
-[[ -f "$ENV_TEMPLATE" ]] || die ".env.example was not found."
+main() {
+  trap cleanup EXIT
+  cd "$REPO_ROOT"
+  [[ -f "$ENV_TEMPLATE" ]] || die ".env.example was not found."
 
-if [[ -e "$ENV_FILE" ]]; then
-  [[ -f "$ENV_FILE" ]] || die ".env exists but is not a regular file."
-  validate_existing_environment
+  if [[ -e "$ENV_FILE" ]]; then
+    [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] \
+      || die ".env must be a regular file, not a symlink."
+    local existing_secrets_dir
+    existing_secrets_dir="$(validate_existing_environment)"
+    repair_secret_permissions "$ENV_FILE" "$existing_secrets_dir"
+    check_docker
+    printf '%s\n' 'docker compose up -d'
+    return 0
+  fi
+
+  check_docker
+  [[ ! -e "$DEFAULT_SECRETS_DIR" ]] \
+    || die "The secrets directory already exists. Move it aside before initializing a new environment."
+  check_port_80
+  require_command od
+  require_command awk
+  require_command grep
+  require_command mktemp
+
+  local public_base_url trusted_proxy_cidrs initial_admin_email
+  local initial_admin_password initial_admin_password_confirmation
+  read -r -p 'Public HTTPS origin (for example https://ai.example.com): ' public_base_url
+  public_base_url="${public_base_url%/}"
+  validate_public_url "$public_base_url"
+
+  read -r -p 'Trusted proxy CIDRs [private_ranges]: ' trusted_proxy_cidrs
+  trusted_proxy_cidrs="${trusted_proxy_cidrs:-private_ranges}"
+  validate_proxy_cidrs "$trusted_proxy_cidrs"
+
+  read -r -p 'Initial super administrator email: ' initial_admin_email
+  [[ "$initial_admin_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] \
+    || die "The super administrator email address is invalid."
+
+  while true; do
+    read -r -s -p 'Initial temporary administrator password (minimum 12 characters): ' initial_admin_password
+    printf '\n'
+    [[ ${#initial_admin_password} -ge 12 ]] || {
+      printf '%s\n' 'Password must contain at least 12 characters.' >&2
+      continue
+    }
+    read -r -s -p 'Confirm temporary administrator password: ' initial_admin_password_confirmation
+    printf '\n'
+    [[ "$initial_admin_password" == "$initial_admin_password_confirmation" ]] || {
+      printf '%s\n' 'Passwords do not match.' >&2
+      continue
+    }
+    unset initial_admin_password_confirmation
+    break
+  done
+
+  TEMP_DIR="$(mktemp -d "${REPO_ROOT}/.init-env.XXXXXX")"
+  mkdir -m 700 "${TEMP_DIR}/secrets"
+
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/postgres_password"
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/keycloak_db_password"
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/redis_password"
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/keycloak_admin_password"
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/keycloak_client_secret"
+  printf '%s' "$(random_hex 64)" > "${TEMP_DIR}/secrets/session_secret"
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/api_key_pepper"
+  printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/provider_encryption_key"
+  printf '%s' "$initial_admin_password" > "${TEMP_DIR}/secrets/initial_admin_password"
+  unset initial_admin_password
+  chmod 644 "${TEMP_DIR}/secrets/"*
+
+  write_environment_file \
+    "${TEMP_DIR}/.env" \
+    "$public_base_url" \
+    "$trusted_proxy_cidrs" \
+    "$initial_admin_email"
+  chmod 600 "${TEMP_DIR}/.env"
+
+  mv -- "${TEMP_DIR}/secrets" "$DEFAULT_SECRETS_DIR"
+  mv -- "${TEMP_DIR}/.env" "$ENV_FILE"
+  rmdir -- "$TEMP_DIR"
+  TEMP_DIR=""
+
+  local created_secrets_dir
+  created_secrets_dir="$(validate_existing_environment)"
+  repair_secret_permissions "$ENV_FILE" "$created_secrets_dir"
   printf '%s\n' 'docker compose up -d'
-  exit 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
 fi
-
-[[ ! -e "$DEFAULT_SECRETS_DIR" ]] \
-  || die "The secrets directory already exists. Move it aside before initializing a new environment."
-check_port_80
-require_command od
-require_command awk
-require_command grep
-require_command mktemp
-
-read -r -p 'Public HTTPS origin (for example https://ai.example.com): ' public_base_url
-public_base_url="${public_base_url%/}"
-validate_public_url "$public_base_url"
-
-read -r -p 'Trusted proxy CIDRs [private_ranges]: ' trusted_proxy_cidrs
-trusted_proxy_cidrs="${trusted_proxy_cidrs:-private_ranges}"
-validate_proxy_cidrs "$trusted_proxy_cidrs"
-
-read -r -p 'Initial super administrator email: ' initial_admin_email
-[[ "$initial_admin_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] \
-  || die "The super administrator email address is invalid."
-
-while true; do
-  read -r -s -p 'Initial temporary administrator password (minimum 12 characters): ' initial_admin_password
-  printf '\n'
-  [[ ${#initial_admin_password} -ge 12 ]] || {
-    printf '%s\n' 'Password must contain at least 12 characters.' >&2
-    continue
-  }
-  read -r -s -p 'Confirm temporary administrator password: ' initial_admin_password_confirmation
-  printf '\n'
-  [[ "$initial_admin_password" == "$initial_admin_password_confirmation" ]] || {
-    printf '%s\n' 'Passwords do not match.' >&2
-    continue
-  }
-  unset initial_admin_password_confirmation
-  break
-done
-
-TEMP_DIR="$(mktemp -d "${REPO_ROOT}/.init-env.XXXXXX")"
-mkdir -m 700 "${TEMP_DIR}/secrets"
-
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/postgres_password"
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/keycloak_db_password"
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/redis_password"
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/keycloak_admin_password"
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/keycloak_client_secret"
-printf '%s' "$(random_hex 64)" > "${TEMP_DIR}/secrets/session_secret"
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/api_key_pepper"
-printf '%s' "$(random_hex 32)" > "${TEMP_DIR}/secrets/provider_encryption_key"
-printf '%s' "$initial_admin_password" > "${TEMP_DIR}/secrets/initial_admin_password"
-unset initial_admin_password
-chmod 600 "${TEMP_DIR}/secrets/"*
-
-write_environment_file \
-  "${TEMP_DIR}/.env" \
-  "$public_base_url" \
-  "$trusted_proxy_cidrs" \
-  "$initial_admin_email"
-chmod 600 "${TEMP_DIR}/.env"
-
-mv -- "${TEMP_DIR}/secrets" "$DEFAULT_SECRETS_DIR"
-mv -- "${TEMP_DIR}/.env" "$ENV_FILE"
-rmdir -- "$TEMP_DIR"
-TEMP_DIR=""
-
-validate_existing_environment
-printf '%s\n' 'docker compose up -d'

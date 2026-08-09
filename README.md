@@ -52,9 +52,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 - 初始超級管理員 email；
 - 初始暫時密碼，輸入時不會顯示。
 
-腳本從 `.env.example` 建立 `.env`，並以作業系統的 CSPRNG 在 `secrets/` 產生 PostgreSQL、Redis、Keycloak、session、API key pepper 與 Provider 加密金鑰。Bash 會將 `.env` 與 secret files 設為 mode `600`；PowerShell 會收緊 NTFS ACL。secret 不會顯示在終端，也不會寫入 `.env`。
+腳本從 `.env.example` 建立 `.env`，並以作業系統的 CSPRNG 在 `secrets/` 產生 PostgreSQL、Redis、Keycloak、session、API key pepper 與 Provider 加密金鑰。Bash 會將 `.env` 設為 mode `600`、`secrets/` 目錄設為 `700`，並將目錄內的 secret files 設為 `644`。這是因為本機 Docker Compose 對 file-based secrets 使用 bind mount，檔案必須讓不同的非 root 容器 UID 讀取；宿主機上的其他帳號仍無法穿越 mode `700` 的父目錄。PowerShell 會收緊 NTFS ACL，並保留 Docker Desktop 所需的 SYSTEM 存取。secret 不會顯示在終端，也不會寫入 `.env`。
 
-若 `.env` 已存在，腳本只驗證設定與所有 secret files，絕不覆寫或重新產生內容。若要重建環境，請先自行安全備份並移走既有 `.env` 與 `secrets/`；不要只刪除其中一邊。
+若 `.env` 已存在，腳本只驗證設定與所有 secret files，並修正上述檔案權限；絕不覆寫或重新產生任何 secret 內容。若要重建環境，請先自行安全備份並移走既有 `.env` 與 `secrets/`；不要只刪除其中一邊。
 
 ### 2. 啟動完整系統
 
@@ -64,6 +64,28 @@ docker compose ps
 ```
 
 第一次啟動會建置前後端 image、初始化兩個 PostgreSQL database、匯入 Keycloak realm、執行 migration，再建立初始超管。`migrate` 與 `bootstrap` 最後顯示 `Exited (0)` 是正常狀態；`edge`、`api`、`worker`、`postgres`、`redis`、`keycloak` 應為 running/healthy。
+
+#### 舊版 secret 權限造成首次啟動中斷
+
+如果日誌出現 `Required secret file ... is not readable` 或 `KEYCLOAK_DB_PASSWORD_FILE is not readable`，代表舊版初始化腳本把 Linux secret files 設成了 mode `600`。PostgreSQL 此時可能已建立資料叢集，但尚未建立 `app` schema 與 Keycloak database，因此只修權限後直接重跑 `up` 仍不完整。使用以下非破壞性流程修復；初始化 SQL 是冪等的，不需要刪除 volume：
+
+```bash
+sudo chmod 0700 secrets
+sudo find secrets -maxdepth 1 -type f -exec chmod 0644 {} +
+docker compose stop keycloak
+docker compose up -d postgres
+docker compose exec --user postgres postgres /docker-entrypoint-initdb.d/10-init-databases.sh
+docker compose up -d --build
+docker compose ps -a
+```
+
+若仍未 healthy，取得聚焦日誌：
+
+```bash
+docker compose logs --tail=200 postgres migrate keycloak bootstrap api worker edge
+```
+
+不要為了這個權限問題執行 `docker compose down -v`；那會刪除所有服務的持久 volume。
 
 外層 HTTPS proxy 的 upstream 指向 `http://<SpiderwebRouter-host>:80`。請勿另外發布 Compose 內部服務的 ports，也不要將 port 80 直接暴露至不受信任的 Internet；公開入口應為 HTTPS。
 
