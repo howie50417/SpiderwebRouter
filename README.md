@@ -296,6 +296,8 @@ docker compose build --pull
 docker compose up -d
 ```
 
+`api`、`worker`、`migrate` 與 `bootstrap` 共用同一個本機 API image；Compose 只會建置及載入一次，再以不同 command 啟動。Node image 使用 BuildKit 的 pnpm store cache，且前後端只複製各自需要的來源，因此一般更新請保留 builder cache，不要例行加入 `--no-cache` 或執行 `docker builder prune`。
+
 備份兩個 PostgreSQL database：
 
 ```bash

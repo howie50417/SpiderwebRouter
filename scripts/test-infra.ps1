@@ -91,6 +91,15 @@ try {
         Assert-Condition ($null -ne $compose.services.$serviceName.healthcheck) "$serviceName has no healthcheck"
     }
 
+    $apiServiceNames = @('api', 'worker', 'migrate', 'bootstrap')
+    $apiImages = @($apiServiceNames | ForEach-Object { $compose.services.$_.image } | Sort-Object -Unique)
+    Assert-Condition ($apiImages.Count -eq 1) 'API, worker, migrate, and bootstrap do not share one image'
+    Assert-Condition ($null -ne $compose.services.migrate.build) 'migrate must own the shared API image build'
+    foreach ($serviceName in @('api', 'worker', 'bootstrap')) {
+        Assert-Condition ($null -eq $compose.services.$serviceName.PSObject.Properties['build']) "$serviceName unexpectedly defines a duplicate image build"
+        Assert-Condition ($compose.services.$serviceName.pull_policy -eq 'never') "$serviceName may pull instead of consuming the local shared image"
+    }
+
     foreach ($path in @(
         'apps/api/src/main.ts',
         'apps/api/src/worker.ts',
@@ -103,6 +112,26 @@ try {
     $keycloakDockerfile = Get-Content -LiteralPath 'docker/keycloak/Dockerfile' -Raw
     Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_RELATIVE_PATH=/auth') 'Keycloak optimized build is missing KC_HTTP_RELATIVE_PATH=/auth'
     Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_MANAGEMENT_RELATIVE_PATH=/') 'Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/'
+
+    $apiDockerfile = Get-Content -LiteralPath 'docker/api/Dockerfile' -Raw
+    Assert-Condition (-not $apiDockerfile.Contains('COPY . .')) 'API dependency cache is invalidated by a whole-repository COPY'
+    Assert-Condition $apiDockerfile.Contains('--mount=type=cache,id=pnpm-store,target=/pnpm/store') 'API build has no persistent pnpm store cache'
+    Assert-Condition $apiDockerfile.Contains('--filter @spiderwebrouter/api...') 'API dependencies are not installed with a workspace filter'
+    Assert-Condition $apiDockerfile.Contains('install --frozen-lockfile') 'API dependency install does not enforce the lockfile'
+    Assert-Condition $apiDockerfile.Contains('--prod deploy --legacy /prod/apps/api') 'API runtime is not built from a production-only deploy bundle'
+    Assert-Condition (-not $apiDockerfile.Contains('/app /app')) 'API runtime still copies the whole monorepo'
+
+    $edgeDockerfile = Get-Content -LiteralPath 'docker/edge/Dockerfile' -Raw
+    Assert-Condition (-not $edgeDockerfile.Contains('COPY . .')) 'Web dependency cache is invalidated by a whole-repository COPY'
+    Assert-Condition $edgeDockerfile.Contains('--mount=type=cache,id=pnpm-store,target=/pnpm/store') 'Web build has no persistent pnpm store cache'
+    Assert-Condition $edgeDockerfile.Contains('--filter @spiderwebrouter/web...') 'Web dependencies are not installed with a workspace filter'
+    Assert-Condition $edgeDockerfile.Contains('COPY apps/web ./apps/web') 'Web source is not copied independently from backend source'
+
+    $apiPackage = Get-Content -LiteralPath 'apps/api/package.json' -Raw | ConvertFrom-Json
+    Assert-Condition ($null -ne $apiPackage.dependencies.PSObject.Properties['prisma']) 'Prisma CLI is not a production dependency required by migrate'
+    Assert-Condition ($null -eq $apiPackage.devDependencies.PSObject.Properties['prisma']) 'Prisma CLI is duplicated in devDependencies'
+    Assert-Condition (@($apiPackage.files) -contains 'dist') 'API deploy package omits dist'
+    Assert-Condition (@($apiPackage.files) -contains 'prisma') 'API deploy package omits Prisma schema and migrations'
 
     Write-Output 'infra tests passed'
 }

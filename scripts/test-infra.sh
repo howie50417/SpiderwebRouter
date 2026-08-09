@@ -97,6 +97,13 @@ for service_name in ("edge", "api", "worker", "postgres", "redis", "keycloak"):
 
 for one_shot in ("migrate", "bootstrap"):
     assert services[one_shot]["restart"] == "no"
+
+api_service_names = ("api", "worker", "migrate", "bootstrap")
+assert len({services[name]["image"] for name in api_service_names}) == 1
+assert "build" in services["migrate"]
+for service_name in ("api", "worker", "bootstrap"):
+    assert "build" not in services[service_name]
+    assert services[service_name]["pull_policy"] == "never"
 PY
 
 [[ -f apps/api/src/main.ts ]] || fail "apps/api/src/main.ts is missing"
@@ -108,5 +115,38 @@ grep -q '^    KC_HTTP_RELATIVE_PATH=/auth \\' docker/keycloak/Dockerfile \
   || fail "Keycloak optimized build is missing KC_HTTP_RELATIVE_PATH=/auth"
 grep -q '^    KC_HTTP_MANAGEMENT_RELATIVE_PATH=/' docker/keycloak/Dockerfile \
   || fail "Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/"
+
+! grep -Fq 'COPY . .' docker/api/Dockerfile \
+  || fail "API dependency cache is invalidated by a whole-repository COPY"
+grep -Fq -- '--mount=type=cache,id=pnpm-store,target=/pnpm/store' docker/api/Dockerfile \
+  || fail "API build has no persistent pnpm store cache"
+grep -Fq -- '--filter @spiderwebrouter/api...' docker/api/Dockerfile \
+  || fail "API dependencies are not installed with a workspace filter"
+grep -Fq 'install --frozen-lockfile' docker/api/Dockerfile \
+  || fail "API dependency install does not enforce the lockfile"
+grep -Fq -- '--prod deploy --legacy /prod/apps/api' docker/api/Dockerfile \
+  || fail "API runtime is not built from a production-only deploy bundle"
+! grep -Fq '/app /app' docker/api/Dockerfile \
+  || fail "API runtime still copies the whole monorepo"
+
+! grep -Fq 'COPY . .' docker/edge/Dockerfile \
+  || fail "Web dependency cache is invalidated by a whole-repository COPY"
+grep -Fq -- '--mount=type=cache,id=pnpm-store,target=/pnpm/store' docker/edge/Dockerfile \
+  || fail "Web build has no persistent pnpm store cache"
+grep -Fq -- '--filter @spiderwebrouter/web...' docker/edge/Dockerfile \
+  || fail "Web dependencies are not installed with a workspace filter"
+grep -Fq 'COPY apps/web ./apps/web' docker/edge/Dockerfile \
+  || fail "Web source is not copied independently from backend source"
+
+python3 - "${REPO_ROOT}/apps/api/package.json" <<'PY'
+import json
+import pathlib
+import sys
+
+package = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert "prisma" in package["dependencies"]
+assert "prisma" not in package["devDependencies"]
+assert {"dist", "prisma"}.issubset(package["files"])
+PY
 
 printf '%s\n' 'infra tests passed'

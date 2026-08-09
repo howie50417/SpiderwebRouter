@@ -7,6 +7,13 @@ x-default-logging: &default-logging
     max-file: '5'
     compress: 'true'
 
+x-api-image: &api-image
+  image: ${COMPOSE_PROJECT_NAME:-spiderwebrouter}-api:local
+
+x-api-image-consumer: &api-image-consumer
+  <<: *api-image
+  pull_policy: never
+
 x-api-environment: &api-environment
   NODE_ENV: production
   PORT: ${API_PORT:-3000}
@@ -80,9 +87,7 @@ services:
     logging: *default-logging
 
   api:
-    build:
-      context: .
-      dockerfile: docker/api/Dockerfile
+    <<: *api-image-consumer
     restart: unless-stopped
     environment: *api-environment
     secrets: *api-secrets
@@ -122,9 +127,7 @@ services:
     logging: *default-logging
 
   worker:
-    build:
-      context: .
-      dockerfile: docker/api/Dockerfile
+    <<: *api-image-consumer
     command: ['node', 'apps/api/dist/worker.js']
     restart: unless-stopped
     environment: *api-environment
@@ -158,6 +161,7 @@ services:
     logging: *default-logging
 
   migrate:
+    <<: *api-image
     build:
       context: .
       dockerfile: docker/api/Dockerfile
@@ -183,9 +187,7 @@ services:
     logging: *default-logging
 
   bootstrap:
-    build:
-      context: .
-      dockerfile: docker/api/Dockerfile
+    <<: *api-image-consumer
     command: ['node', 'apps/api/dist/bootstrap.js']
     restart: 'no'
     environment: *api-environment
