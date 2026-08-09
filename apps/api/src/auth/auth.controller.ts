@@ -35,7 +35,7 @@ export class AuthController {
       code_challenge: challenge,
       code_challenge_method: 'S256',
     }).toString();
-    await reply.redirect(url.toString());
+    await reply.code(302).redirect(url.toString());
   }
 
   @Get('callback')
@@ -96,7 +96,7 @@ export class AuthController {
       ],
       'cache-control': 'no-store',
     });
-    await reply.redirect(`${this.config.publicBaseUrl}/`);
+    await reply.code(302).redirect(`${this.config.publicBaseUrl}/`);
   }
 
   @Get('logout')
@@ -105,7 +105,7 @@ export class AuthController {
     if (sessionId) await this.sessions.deleteSession(sessionId);
     reply.header('set-cookie', clearSessionCookie(this.config.publicBaseUrl));
     reply.header('cache-control', 'no-store');
-    await reply.redirect(`${this.config.publicBaseUrl}/`);
+    await reply.code(302).redirect(`${this.config.publicBaseUrl}/`);
   }
 
   @Get('session')
