@@ -104,5 +104,9 @@ PY
 [[ -f apps/api/src/bootstrap.ts ]] || fail "apps/api/src/bootstrap.ts is missing"
 [[ -f apps/api/prisma/migrations/202608090001_initial/migration.sql ]] \
   || fail "initial Prisma migration is missing"
+grep -q '^    KC_HTTP_RELATIVE_PATH=/auth \\' docker/keycloak/Dockerfile \
+  || fail "Keycloak optimized build is missing KC_HTTP_RELATIVE_PATH=/auth"
+grep -q '^    KC_HTTP_MANAGEMENT_RELATIVE_PATH=/' docker/keycloak/Dockerfile \
+  || fail "Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/"
 
 printf '%s\n' 'infra tests passed'

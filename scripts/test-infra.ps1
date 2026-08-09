@@ -100,6 +100,10 @@ try {
         Assert-Condition (Test-Path -LiteralPath $path -PathType Leaf) "$path is missing"
     }
 
+    $keycloakDockerfile = Get-Content -LiteralPath 'docker/keycloak/Dockerfile' -Raw
+    Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_RELATIVE_PATH=/auth') 'Keycloak optimized build is missing KC_HTTP_RELATIVE_PATH=/auth'
+    Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_MANAGEMENT_RELATIVE_PATH=/') 'Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/'
+
     Write-Output 'infra tests passed'
 }
 finally {
