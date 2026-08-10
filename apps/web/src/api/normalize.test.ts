@@ -142,6 +142,30 @@ describe('batch grant normalization', () => {
   });
 });
 
+describe('administrator password reset transport', () => {
+  const path = '/admin/users/user-1/reset-password';
+
+  it('does not reinterpret password reset fields as a user update', () => {
+    expect(
+      normalizeRequestPayload(path, { temporaryPassword: 'temporary-password-value' }),
+    ).toEqual({ temporaryPassword: 'temporary-password-value' });
+  });
+
+  it('preserves the one-time credential response without user normalization', () => {
+    expect(
+      normalizeApiPayload(path, {
+        userId: 'user-1',
+        temporaryPassword: 'generated-password-value',
+        generated: true,
+      }),
+    ).toEqual({
+      userId: 'user-1',
+      temporaryPassword: 'generated-password-value',
+      generated: true,
+    });
+  });
+});
+
 describe.each(['/me/usage', '/admin/usage'])('usage normalization for %s', (path) => {
   it('preserves request timestamps used by the shared usage table', () => {
     const createdAt = '2026-08-09T11:52:21.970Z';

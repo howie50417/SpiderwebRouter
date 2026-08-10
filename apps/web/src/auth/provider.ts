@@ -4,14 +4,16 @@ import { ApiError, apiClient } from '@/api/client';
 import { endpoints } from '@/api/endpoints';
 import { consoleLoginHref, currentReturnTo, sanitizeReturnTo } from '@/auth/returnTo';
 import { registerIdentityReset } from '@/auth/sessionExpiry';
+import type { AppLocale } from '@/context/AppSettings';
 import type { Identity } from '@/types';
 
 let cachedIdentity: Identity | undefined;
 let identityRequest: Promise<Identity> | undefined;
 
-export function loginHref(returnTo = '/'): string {
+export function loginHref(returnTo = '/', locale: AppLocale = 'zh-TW'): string {
   const safeReturnTo = sanitizeReturnTo(returnTo);
-  return `/auth/login?returnTo=${encodeURIComponent(safeReturnTo)}`;
+  const oidcLocale = locale === 'en-US' ? 'en' : 'zh-TW';
+  return `/auth/login?returnTo=${encodeURIComponent(safeReturnTo)}&locale=${encodeURIComponent(oidcLocale)}`;
 }
 
 async function loadIdentity(force = false): Promise<Identity> {

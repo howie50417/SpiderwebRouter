@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { authProvider, clearIdentity } from '@/auth/provider';
+import { authProvider, clearIdentity, loginHref } from '@/auth/provider';
 import {
   resetUnauthorizedRedirectForTests,
   setUnauthorizedNavigationForTests,
@@ -17,6 +17,11 @@ afterEach(() => {
 });
 
 describe('authProvider session errors', () => {
+  it('maps the console locale to the safe Keycloak locale hint', () => {
+    expect(loginHref('/usage', 'zh-TW')).toBe('/auth/login?returnTo=%2Fusage&locale=zh-TW');
+    expect(loginHref('/usage', 'en-US')).toBe('/auth/login?returnTo=%2Fusage&locale=en');
+  });
+
   it.each([403, 503])('does not log out or redirect on HTTP %s', async (status) => {
     vi.stubGlobal(
       'fetch',

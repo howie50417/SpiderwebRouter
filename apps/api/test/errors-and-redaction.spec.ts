@@ -57,6 +57,7 @@ describe('diagnostic redaction', () => {
       'api_key=sk-exampleCredential123456',
       'cookie=session-value',
       'token: AIzaExampleCredential1234567890',
+      'temporaryPassword=one-time-password-value',
     ].join('; ');
 
     const redacted = redactText(value);
@@ -65,6 +66,7 @@ describe('diagnostic redaction', () => {
     expect(redacted).not.toContain('sk-exampleCredential123456');
     expect(redacted).not.toContain('session-value');
     expect(redacted).not.toContain('AIzaExampleCredential1234567890');
+    expect(redacted).not.toContain('one-time-password-value');
     expect(redacted).toContain('[REDACTED]');
   });
 
@@ -75,6 +77,8 @@ describe('diagnostic redaction', () => {
         api_key: 'opaque-api-credential',
         token: 'opaque-token',
         cookie: 'opaque-session',
+        password: 'private-password',
+        credentials: 'private-credentials',
         prompt: 'private customer prompt',
         messages: [{ role: 'user', content: 'private customer message' }],
         input: 'private Responses input',
@@ -89,6 +93,8 @@ describe('diagnostic redaction', () => {
       'opaque-api-credential',
       'opaque-token',
       'opaque-session',
+      'private-password',
+      'private-credentials',
       'private customer prompt',
       'private customer message',
       'private Responses input',
@@ -102,6 +108,7 @@ describe('diagnostic redaction', () => {
     const redacted = safeLogObject({
       status: 503,
       provider: { id: 'provider-id', token: 'provider-token' },
+      credential: { temporaryPassword: 'generated-password' },
       request: {
         headers: { authorization: 'Bearer hidden', 'content-type': 'application/json' },
         messages: [{ role: 'user', content: 'private prompt' }],
@@ -112,6 +119,7 @@ describe('diagnostic redaction', () => {
     expect(redacted).toEqual({
       status: 503,
       provider: { id: 'provider-id', token: '[REDACTED]' },
+      credential: '[REDACTED]',
       request: {
         headers: { authorization: '[REDACTED]', 'content-type': 'application/json' },
         messages: '[REDACTED]',

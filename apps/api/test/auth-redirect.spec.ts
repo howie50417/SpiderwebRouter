@@ -70,6 +70,7 @@ describe('OIDC browser redirects', () => {
     expect(response.headers.location).toMatch(
       /^https:\/\/router\.example\.test\/auth\/realms\/spiderwebrouter\/protocol\/openid-connect\/auth\?/,
     );
+    expect(new URL(String(response.headers.location)).searchParams.get('ui_locales')).toBe('zh-TW');
     expect(response.headers['set-cookie']).toContain('swr_oidc_state=');
     expect(response.headers['set-cookie']).toContain('Secure');
     expect(sessions.createLoginFlow).toHaveBeenCalledOnce();
@@ -77,6 +78,16 @@ describe('OIDC browser redirects', () => {
       expect.any(String),
       expect.objectContaining({ returnTo: '/usage?status=FAILED#attempts' }),
     );
+  });
+
+  it('passes an explicitly selected English locale to Keycloak', async () => {
+    const response = await app.getHttpAdapter().getInstance().inject({
+      method: 'GET',
+      url: '/auth/login?locale=en',
+    });
+
+    expect(response.statusCode, response.body).toBe(302);
+    expect(new URL(String(response.headers.location)).searchParams.get('ui_locales')).toBe('en');
   });
 
   it('returns to the server-stored internal route after callback', async () => {

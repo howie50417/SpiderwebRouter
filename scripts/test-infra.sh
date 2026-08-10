@@ -71,6 +71,10 @@ with pathlib.Path(sys.argv[1]).open(encoding="utf-8") as realm_file:
 assert realm["realm"] == "spiderwebrouter"
 assert realm["loginTheme"] == "spiderwebrouter"
 assert realm["registrationAllowed"] is False
+assert realm["resetPasswordAllowed"] is False
+assert realm["internationalizationEnabled"] is True
+assert realm["supportedLocales"] == ["zh-TW", "en"]
+assert realm["defaultLocale"] == "zh-TW"
 assert realm["accessTokenLifespan"] == 300
 assert realm["ssoSessionIdleTimeout"] == 604800
 assert realm["ssoSessionMaxLifespan"] == 2592000
@@ -80,6 +84,12 @@ totp = next(action for action in realm["requiredActions"] if action["alias"] == 
 assert totp["enabled"] is True
 assert totp["defaultAction"] is False
 PY
+
+[[ -f favicon.ico ]] || fail "canonical favicon.ico is missing"
+grep -Fq \
+  'COPY favicon.ico /opt/keycloak/themes/spiderwebrouter/login/resources/img/favicon.ico' \
+  docker/keycloak/Dockerfile \
+  || fail "Keycloak image does not install the canonical favicon"
 
 compose_json="$(docker compose --env-file .env.example -f docker-compose.yml config --format json 2>/dev/null)"
 COMPOSE_JSON="$compose_json" python3 <<'PY'

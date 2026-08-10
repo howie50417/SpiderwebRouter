@@ -117,10 +117,9 @@ html.login-pf body {
   width: 3.5rem;
   height: 3.5rem;
   flex: 0 0 3.5rem;
-  border-radius: 0.95rem;
   background: url('../img/logo.png') center / contain no-repeat;
-  box-shadow: 0 11px 30px rgba(0, 19, 29, 0.34);
   content: '';
+  filter: drop-shadow(0 11px 15px rgba(0, 19, 29, 0.34));
 }
 
 .pf-v5-c-login__main {
@@ -406,7 +405,6 @@ hr {
     width: 2.8rem;
     height: 2.8rem;
     flex-basis: 2.8rem;
-    border-radius: 0.75rem;
   }
 
   .pf-v5-c-login__main {

@@ -440,6 +440,7 @@ export function normalizeApiPayload(path: string, payload: unknown): unknown {
       grants: Array.isArray(source.grants) ? source.grants.map(normalizeGrant) : [],
     };
   }
+  if (path.startsWith('/admin/users/') && path.endsWith('/reset-password')) return payload;
   if (path.startsWith('/admin/users')) {
     return mapCollection(payload, normalizeUser);
   }
@@ -484,6 +485,7 @@ export function normalizeRequestPayload(path: string, payload: unknown): unknown
   if (path.startsWith('/admin/users/') && path.includes('/grants/batch')) {
     return source;
   }
+  if (path.startsWith('/admin/users/') && path.endsWith('/reset-password')) return source;
   if (path.startsWith('/admin/users')) {
     const { enabled, ...rest } = source;
     return { ...rest, active: enabled ?? source.active };

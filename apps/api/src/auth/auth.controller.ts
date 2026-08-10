@@ -18,6 +18,7 @@ export class AuthController {
   @Get('login')
   async login(
     @Query('returnTo') requestedReturnTo: string | undefined,
+    @Query('locale') requestedLocale: string | undefined,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     if (!this.config.oidcIssuerUrl)
@@ -38,6 +39,7 @@ export class AuthController {
       redirect_uri: `${this.config.publicBaseUrl}/auth/callback`,
       response_type: 'code',
       scope: 'openid profile email',
+      ui_locales: requestedLocale === 'en' ? 'en' : 'zh-TW',
       state,
       nonce,
       code_challenge: challenge,

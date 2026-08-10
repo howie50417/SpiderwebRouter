@@ -2,6 +2,7 @@ import {
   AppstoreAddOutlined,
   EditOutlined,
   KeyOutlined,
+  LockOutlined,
   PlusOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -54,12 +55,23 @@ interface BatchGrantResponse {
   grants: UserModelGrant[];
 }
 
+interface PasswordResetFormValues {
+  temporaryPassword?: string;
+}
+
+interface PasswordResetResponse {
+  userId: string;
+  temporaryPassword: string;
+  generated: boolean;
+}
+
 export function UsersPage() {
   const userTableRef = useRef<ActionType | undefined>(undefined);
   const grantTableRef = useRef<ActionType | undefined>(undefined);
   const { message } = App.useApp();
   const { locale, tr } = useAppSettings();
   const [userFormOpen, setUserFormOpen] = useState(false);
+  const [passwordResetUser, setPasswordResetUser] = useState<UserRecord>();
   const [selectedUser, setSelectedUser] = useState<UserRecord>();
   const [grantFormOpen, setGrantFormOpen] = useState(false);
   const [editingGrant, setEditingGrant] = useState<UserModelGrant>();
@@ -74,6 +86,7 @@ export function UsersPage() {
   const [generatedCredential, setGeneratedCredential] = useState<{
     email: string;
     password: string;
+    reason: 'created' | 'reset';
   }>();
 
   const notifyError = (reason: unknown) => {
@@ -226,7 +239,7 @@ export function UsersPage() {
       title: tr('操作', 'Actions'),
       valueType: 'option',
       fixed: 'right',
-      width: 210,
+      width: 310,
       render: (_, row) => [
         <Button
           key="grants"
@@ -236,6 +249,15 @@ export function UsersPage() {
           onClick={() => setSelectedUser(row)}
         >
           {tr('模型授權', 'Model grants')}
+        </Button>,
+        <Button
+          key="reset-password"
+          type="link"
+          size="small"
+          icon={<LockOutlined />}
+          onClick={() => setPasswordResetUser(row)}
+        >
+          {tr('重置密碼', 'Reset password')}
         </Button>,
         <Popconfirm
           key="toggle"
@@ -433,6 +455,7 @@ export function UsersPage() {
               setGeneratedCredential({
                 email: created.email ?? values.email,
                 password: created.generatedTemporaryPassword,
+                reason: 'created',
               });
             }
             message.success(
@@ -480,9 +503,80 @@ export function UsersPage() {
         <ProFormSwitch name="enabled" label={tr('啟用帳號', 'Enable account')} />
       </ModalForm>
 
+      <ModalForm<PasswordResetFormValues>
+        key={`password-reset-${passwordResetUser?.id ?? 'none'}`}
+        title={
+          passwordResetUser
+            ? `${tr('重置密碼', 'Reset password')} · ${passwordResetUser.displayName || passwordResetUser.email}`
+            : tr('重置密碼', 'Reset password')
+        }
+        open={Boolean(passwordResetUser)}
+        modalProps={{
+          destroyOnClose: true,
+          maskClosable: false,
+          onCancel: () => setPasswordResetUser(undefined),
+        }}
+        submitter={{
+          searchConfig: {
+            resetText: tr('取消', 'Cancel'),
+            submitText: tr('重置密碼', 'Reset password'),
+          },
+          submitButtonProps: { danger: true },
+        }}
+        onFinish={async (values) => {
+          if (!passwordResetUser) return false;
+          try {
+            const result = await apiClient.post<PasswordResetResponse>(
+              endpoints.userPasswordReset(passwordResetUser.id),
+              values.temporaryPassword ? { temporaryPassword: values.temporaryPassword } : {},
+            );
+            setGeneratedCredential({
+              email: passwordResetUser.email,
+              password: result.temporaryPassword,
+              reason: 'reset',
+            });
+            setPasswordResetUser(undefined);
+            message.success(tr('使用者密碼已重置', 'User password reset'));
+            return true;
+          } catch (error) {
+            notifyError(error);
+            return false;
+          }
+        }}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={tr(
+            '使用者下次登入必須更換密碼',
+            'The user must change the password at next sign-in',
+          )}
+          description={tr(
+            '重置後會取得一次性暫時密碼。請先確認能透過安全管道交付給使用者。',
+            'You will receive a one-time temporary password. Make sure you can send it to the user securely.',
+          )}
+        />
+        <ProFormText.Password
+          name="temporaryPassword"
+          label={tr('暫時密碼（選填）', 'Temporary password (optional)')}
+          fieldProps={{ autoComplete: 'new-password' }}
+          placeholder={tr('留空由系統安全產生', 'Leave blank to generate securely')}
+          tooltip={tr(
+            '至少 12 個字元；留空會自動產生。完整密碼只會在下一個畫面顯示一次。',
+            'At least 12 characters. Leave blank to generate one. The full password is shown once on the next screen.',
+          )}
+          rules={[{ min: 12 }]}
+        />
+      </ModalForm>
+
       <Modal
         open={Boolean(generatedCredential)}
-        title={tr('儲存暫時密碼', 'Save the temporary password')}
+        title={
+          generatedCredential?.reason === 'reset'
+            ? tr('密碼已重置', 'Password reset')
+            : tr('儲存暫時密碼', 'Save the temporary password')
+        }
         okText={tr('我已安全保存', 'I saved it securely')}
         cancelButtonProps={{ style: { display: 'none' } }}
         closable={false}

@@ -196,6 +196,19 @@ export class AdminController {
     return this.admin.updateUser(id, body, actor, req.id);
   }
 
+  @Post('users/:id/reset-password')
+  resetUserPassword(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentPrincipal() actor: AuthenticatedPrincipal,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    reply.header('cache-control', 'no-store');
+    reply.header('pragma', 'no-cache');
+    return this.admin.resetUserPassword(id, body, actor, req.id);
+  }
+
   @Get('grants')
   grants(@Query('userId') userId?: string) {
     return this.admin.listGrants(userId);

@@ -58,9 +58,18 @@ try {
 
     $realm = Get-Content -Raw 'docker/keycloak/realm-export.json' | ConvertFrom-Json
     Assert-Condition ($realm.loginTheme -eq 'spiderwebrouter') 'SpiderwebRouter Keycloak login theme is not enabled'
+    Assert-Condition (-not $realm.resetPasswordAllowed) 'Keycloak password recovery must be disabled'
+    Assert-Condition ($realm.internationalizationEnabled) 'Keycloak internationalization is not enabled'
+    Assert-Condition (($realm.supportedLocales -join ',') -eq 'zh-TW,en') 'Keycloak supported locales are incorrect'
+    Assert-Condition ($realm.defaultLocale -eq 'zh-TW') 'Keycloak default locale is not Traditional Chinese'
     Assert-Condition ($realm.accessTokenLifespan -eq 300) 'Keycloak access token is not five minutes'
     Assert-Condition ($realm.ssoSessionIdleTimeout -eq 604800) 'Keycloak idle session is not seven days'
     Assert-Condition ($realm.ssoSessionMaxLifespan -eq 2592000) 'Keycloak maximum session is not 30 days'
+    Assert-Condition (Test-Path -LiteralPath 'favicon.ico' -PathType Leaf) 'Canonical favicon.ico is missing'
+    $keycloakDockerfile = Get-Content -Raw 'docker/keycloak/Dockerfile'
+    Assert-Condition (
+        $keycloakDockerfile.Contains('COPY favicon.ico /opt/keycloak/themes/spiderwebrouter/login/resources/img/favicon.ico')
+    ) 'Keycloak image does not install the canonical favicon'
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'

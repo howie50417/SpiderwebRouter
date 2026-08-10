@@ -3,6 +3,7 @@ import type { UserRole } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { loadRuntimeConfig, readSecret } from '../config/runtime-config';
 import { AppError } from '../common/errors';
+import { redactText } from '../common/logger';
 
 type JsonObject = Record<string, unknown>;
 
@@ -10,6 +11,11 @@ interface ProvisionedUser {
   id: string;
   generatedTemporaryPassword?: string;
   newlyCreated: boolean;
+}
+
+export interface ResetPasswordResult {
+  temporaryPassword: string;
+  generated: boolean;
 }
 
 @Injectable()
@@ -93,6 +99,26 @@ export class KeycloakAdminService {
     const token = await this.adminToken();
     const response = await this.request(`/users/${encodeURIComponent(id)}`, token, 'DELETE');
     if (!response.ok && response.status !== 404) await this.expect(response, 'delete user');
+  }
+
+  async resetUserPassword(
+    id: string,
+    suppliedTemporaryPassword?: string,
+  ): Promise<ResetPasswordResult> {
+    const temporaryPassword = suppliedTemporaryPassword ?? randomBytes(24).toString('base64url');
+    const token = await this.adminToken();
+    await this.expect(
+      await this.request(`/users/${encodeURIComponent(id)}/reset-password`, token, 'PUT', {
+        type: 'password',
+        value: temporaryPassword,
+        temporary: true,
+      }),
+      'reset user password',
+    );
+    return {
+      temporaryPassword,
+      generated: suppliedTemporaryPassword === undefined,
+    };
   }
 
   private async assignRole(userId: string, role: UserRole, token: string): Promise<void> {
@@ -204,13 +230,14 @@ export class KeycloakAdminService {
 
   private async expect(response: Response, action: string): Promise<void> {
     if (response.ok) return;
-    await response.body?.cancel();
+    const diagnosticBody = await response.text().catch(() => '');
+    const bodySuffix = diagnosticBody ? `: ${redactText(diagnosticBody)}` : '';
     throw new AppError(
       'provider_unavailable',
       503,
       'Authentication service is unavailable.',
       null,
-      new Error(`Keycloak failed to ${action} (HTTP ${response.status})`),
+      new Error(`Keycloak failed to ${action} (HTTP ${response.status})${bodySuffix}`),
     );
   }
 }

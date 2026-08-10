@@ -94,6 +94,12 @@ const userSchema = z.object({
   temporaryPassword: z.string().min(12).max(1024).optional(),
 });
 
+const resetUserPasswordSchema = z
+  .object({
+    temporaryPassword: z.string().min(12).max(1024).optional(),
+  })
+  .strict();
+
 const grantAliasPattern = /^[A-Za-z0-9._:/-]+$/;
 
 const grantSchema = z.object({
@@ -714,6 +720,42 @@ export class AdminService {
     const user = await this.prisma.user.update({ where: { id }, data: userData });
     await this.audit(actor, 'user.update', 'User', id, requestId);
     return user;
+  }
+
+  async resetUserPassword(
+    id: string,
+    input: unknown,
+    actor: AuthenticatedPrincipal,
+    requestId: string,
+  ) {
+    const value = parse(resetUserPasswordSchema, input);
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, keycloakSubject: true },
+    });
+    if (!user) throw new AppError('invalid_request_error', 404, 'The user was not found.', 'id');
+    if (!user.keycloakSubject) {
+      throw new AppError(
+        'invalid_request_error',
+        409,
+        'The user does not have an authentication account.',
+        'id',
+      );
+    }
+
+    const reset = await this.keycloak.resetUserPassword(
+      user.keycloakSubject,
+      value.temporaryPassword,
+    );
+    await this.audit(actor, 'user.password.reset', 'User', id, requestId, {
+      temporary: true,
+      generated: reset.generated,
+    });
+    return {
+      userId: id,
+      temporaryPassword: reset.temporaryPassword,
+      generated: reset.generated,
+    };
   }
 
   listGrants(userId?: string) {

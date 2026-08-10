@@ -14,6 +14,7 @@ COPY docker/keycloak/realm-export.json /opt/keycloak/data/import/spiderwebrouter
 COPY docker/keycloak/entrypoint.sh /opt/keycloak/bin/spiderwebrouter-entrypoint.sh
 COPY docker/keycloak/themes/spiderwebrouter /opt/keycloak/themes/spiderwebrouter
 COPY apps/web/public/logo.png /opt/keycloak/themes/spiderwebrouter/login/resources/img/logo.png
+COPY favicon.ico /opt/keycloak/themes/spiderwebrouter/login/resources/img/favicon.ico
 
 USER root
 RUN chmod 0755 /opt/keycloak/bin/spiderwebrouter-entrypoint.sh \

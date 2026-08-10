@@ -50,7 +50,7 @@ describe('LoginPage', () => {
     expect(screen.getByText('登入狀態已過期')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /使用單一登入繼續/ })).toHaveAttribute(
       'href',
-      '/auth/login?returnTo=%2Fusage%3Fstatus%3DFAILED%23attempts',
+      '/auth/login?returnTo=%2Fusage%3Fstatus%3DFAILED%23attempts&locale=zh-TW',
     );
   });
 
@@ -59,7 +59,7 @@ describe('LoginPage', () => {
 
     expect(screen.getByRole('link', { name: /使用單一登入繼續/ })).toHaveAttribute(
       'href',
-      '/auth/login?returnTo=%2F',
+      '/auth/login?returnTo=%2F&locale=zh-TW',
     );
   });
 

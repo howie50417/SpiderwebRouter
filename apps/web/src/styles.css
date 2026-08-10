@@ -410,8 +410,7 @@ select {
   display: block;
   width: 46px;
   height: 46px;
-  border-radius: 13px;
-  box-shadow: 0 9px 24px rgba(31, 196, 214, 0.24);
+  filter: drop-shadow(0 9px 12px rgba(31, 196, 214, 0.24));
   object-fit: contain;
 }
 
@@ -889,7 +888,6 @@ select {
   .login-brand__logo {
     width: 40px;
     height: 40px;
-    border-radius: 11px;
   }
 
   .login-brand {

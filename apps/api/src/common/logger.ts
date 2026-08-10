@@ -11,6 +11,14 @@ const redactionPaths = [
   '*.apiKey',
   '*.secret',
   '*.token',
+  '*.password',
+  '*.temporaryPassword',
+  '*.credential',
+  '*.credentials',
+  'password',
+  'temporaryPassword',
+  'credential',
+  'credentials',
   'body',
   'request.body',
   'prompt',
@@ -37,11 +45,11 @@ export const appLogger = pino({
 });
 
 const SECRET_PATTERN =
-  /(authorization|api[-_ ]?key|token|secret|cookie|bearer)(\s*[=:]\s*|\s+)[^\s,;"']+/gi;
+  /(authorization|api[-_ ]?key|token|secret|cookie|bearer|password|temporary[-_ ]?password|credentials?)(\s*[=:]\s*|\s+)[^\s,;"']+/gi;
 const KEY_PATTERN = /\b(sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{16,})\b/g;
 const BEARER_PATTERN = /\bBearer\s+[^\s,;"']+/gi;
 const JSON_SECRET_PATTERN =
-  /("(?:authorization|api[-_ ]?key|token|secret|cookie|prompt|messages|input|output|images|tool_arguments)"\s*:\s*)"(?:\\.|[^"\\])*"/gi;
+  /("(?:authorization|api[-_ ]?key|token|secret|cookie|password|temporary[-_ ]?password|credentials?|prompt|messages|input|output|images|tool_arguments)"\s*:\s*)"(?:\\.|[^"\\])*"/gi;
 
 export function redactText(value: string, maxLength = 16 * 1024): string {
   let candidate = value;
@@ -70,7 +78,9 @@ function sanitizeLogValue(value: unknown): unknown {
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     if (
-      /authorization|cookie|secret|api.?key|token|prompt|message|input|output|image|tool/i.test(key)
+      /authorization|cookie|secret|api.?key|token|password|credential|prompt|message|input|output|image|tool/i.test(
+        key,
+      )
     ) {
       result[key] = '[REDACTED]';
     } else {

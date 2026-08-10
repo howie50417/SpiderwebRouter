@@ -114,7 +114,7 @@ export function LoginPage() {
               type="primary"
               size="large"
               block
-              href={loginHref(returnTo)}
+              href={loginHref(returnTo, locale)}
               icon={<ArrowRightOutlined />}
               iconPosition="end"
             >

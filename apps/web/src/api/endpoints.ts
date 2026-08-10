@@ -14,6 +14,7 @@ export const endpoints = {
   publishedModel: (id: string) => `${admin}/models/${encodeURIComponent(id)}`,
   users: `${admin}/users`,
   user: (id: string) => `${admin}/users/${encodeURIComponent(id)}`,
+  userPasswordReset: (id: string) => `${admin}/users/${encodeURIComponent(id)}/reset-password`,
   grants: `${admin}/grants`,
   userGrants: (id: string) => `${admin}/grants?userId=${encodeURIComponent(id)}`,
   userGrantsBatch: (id: string) => `${admin}/users/${encodeURIComponent(id)}/grants/batch`,
