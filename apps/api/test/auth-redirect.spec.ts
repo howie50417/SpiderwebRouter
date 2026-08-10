@@ -70,7 +70,9 @@ describe('OIDC browser redirects', () => {
     expect(response.headers.location).toMatch(
       /^https:\/\/router\.example\.test\/auth\/realms\/spiderwebrouter\/protocol\/openid-connect\/auth\?/,
     );
-    expect(new URL(String(response.headers.location)).searchParams.get('ui_locales')).toBe('zh-TW');
+    const authorizationParams = new URL(String(response.headers.location)).searchParams;
+    expect(authorizationParams.get('prompt')).toBe('login');
+    expect(authorizationParams.get('ui_locales')).toBe('zh-TW');
     expect(response.headers['set-cookie']).toContain('swr_oidc_state=');
     expect(response.headers['set-cookie']).toContain('Secure');
     expect(sessions.createLoginFlow).toHaveBeenCalledOnce();
@@ -88,6 +90,17 @@ describe('OIDC browser redirects', () => {
 
     expect(response.statusCode, response.body).toBe(302);
     expect(new URL(String(response.headers.location)).searchParams.get('ui_locales')).toBe('en');
+  });
+
+  it('always requires fresh credentials even when the browser still has a Keycloak SSO session', async () => {
+    const response = await app.getHttpAdapter().getInstance().inject({
+      method: 'GET',
+      url: '/auth/login',
+    });
+
+    expect(response.statusCode, response.body).toBe(302);
+    const authorizationUrl = new URL(String(response.headers.location));
+    expect(authorizationUrl.searchParams.get('prompt')).toBe('login');
   });
 
   it('returns to the server-stored internal route after callback', async () => {

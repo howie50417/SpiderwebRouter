@@ -39,6 +39,7 @@ export class AuthController {
       redirect_uri: `${this.config.publicBaseUrl}/auth/callback`,
       response_type: 'code',
       scope: 'openid profile email',
+      prompt: 'login',
       ui_locales: requestedLocale === 'en' ? 'en' : 'zh-TW',
       state,
       nonce,
