@@ -69,6 +69,7 @@ with pathlib.Path(sys.argv[1]).open(encoding="utf-8") as realm_file:
     realm = json.load(realm_file)
 
 assert realm["realm"] == "spiderwebrouter"
+assert realm["loginTheme"] == "spiderwebrouter"
 assert realm["registrationAllowed"] is False
 assert realm["accessTokenLifespan"] == 300
 assert realm["ssoSessionIdleTimeout"] == 604800
@@ -125,6 +126,17 @@ grep -q '^    KC_HTTP_RELATIVE_PATH=/auth \\' docker/keycloak/Dockerfile \
   || fail "Keycloak optimized build is missing KC_HTTP_RELATIVE_PATH=/auth"
 grep -q '^    KC_HTTP_MANAGEMENT_RELATIVE_PATH=/' docker/keycloak/Dockerfile \
   || fail "Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/"
+grep -Fq 'COPY docker/keycloak/themes/spiderwebrouter /opt/keycloak/themes/spiderwebrouter' docker/keycloak/Dockerfile \
+  || fail "Keycloak image omits the SpiderwebRouter login theme"
+grep -Fq 'COPY apps/web/public/logo.png /opt/keycloak/themes/spiderwebrouter/login/resources/img/logo.png' docker/keycloak/Dockerfile \
+  || fail "Keycloak theme does not consume the canonical logo"
+[[ -f docker/keycloak/themes/spiderwebrouter/login/theme.properties ]] \
+  || fail "Keycloak login theme properties are missing"
+[[ -f docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css ]] \
+  || fail "Keycloak login theme stylesheet is missing"
+[[ -f apps/web/public/logo.png ]] || fail "canonical logo.png is missing"
+grep -Fq 'styles=css/styles.css css/spiderwebrouter.css' docker/keycloak/themes/spiderwebrouter/login/theme.properties \
+  || fail "Keycloak custom theme does not load the parent structural stylesheet before its overrides"
 
 ! grep -Fq 'COPY . .' docker/api/Dockerfile \
   || fail "API dependency cache is invalidated by a whole-repository COPY"

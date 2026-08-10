@@ -40,6 +40,7 @@ describe('existing Keycloak realm session settings', () => {
     expect(representation).toMatchObject({
       displayName: 'Preserve me',
       smtpServer: { host: 'mail.internal' },
+      loginTheme: 'spiderwebrouter',
       accessTokenLifespan: 300,
       ssoSessionIdleTimeout: 604_800,
       ssoSessionMaxLifespan: 2_592_000,

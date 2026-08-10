@@ -2,6 +2,7 @@
   "realm": "spiderwebrouter",
   "displayName": "SpiderwebRouter",
   "enabled": true,
+  "loginTheme": "spiderwebrouter",
   "sslRequired": "external",
   "registrationAllowed": false,
   "registrationEmailAsUsername": true,

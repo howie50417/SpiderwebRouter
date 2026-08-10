@@ -2,10 +2,11 @@ import {
   ApiOutlined,
   ArrowRightOutlined,
   LockOutlined,
-  RadarChartOutlined,
+  MoonOutlined,
   SafetyCertificateOutlined,
+  SunOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Card, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Typography } from 'antd';
 import { useLocation } from 'react-router-dom';
 
 import { loginHref } from '@/auth/provider';
@@ -14,25 +15,21 @@ import { useAppSettings } from '@/context/AppSettings';
 
 export function LoginPage() {
   const location = useLocation();
-  const { locale, setLocale, tr } = useAppSettings();
+  const { colorMode, locale, setLocale, toggleColorMode, tr } = useAppSettings();
   const params = new URLSearchParams(location.search);
   const returnTo = sanitizeReturnTo(params.get('returnTo'));
   const expired = params.get('reason') === 'expired';
 
   return (
     <main className="login-page">
-      <section className="login-hero">
+      <section className="login-hero" aria-labelledby="login-hero-title">
         <div className="login-brand">
-          <div className="brand-mark brand-mark--large">
-            <RadarChartOutlined />
-          </div>
+          <img className="login-brand__logo" src="/logo.png" alt="" aria-hidden="true" />
           <Typography.Text>SpiderwebRouter</Typography.Text>
         </div>
         <div className="login-hero__content">
-          <Tag bordered={false} color="cyan">
-            MODEL GATEWAY CONSOLE
-          </Tag>
-          <Typography.Title>
+          <div className="login-eyebrow">MODEL GATEWAY CONSOLE</div>
+          <Typography.Title id="login-hero-title">
             {tr(
               '把每個模型來源，變成一個可靠的介面。',
               'One reliable interface for every model source.',
@@ -44,16 +41,16 @@ export function LoginPage() {
               'Manage providers, model access, pricing, and usage from one secure OpenAI-compatible gateway.',
             )}
           </Typography.Paragraph>
-          <div className="login-feature-grid">
-            <Space>
+          <div className="login-feature-grid" role="list">
+            <div className="login-feature" role="listitem">
               <ApiOutlined /> OpenAI-compatible
-            </Space>
-            <Space>
+            </div>
+            <div className="login-feature" role="listitem">
               <SafetyCertificateOutlined /> {tr('權限隔離', 'Access isolation')}
-            </Space>
-            <Space>
+            </div>
+            <div className="login-feature" role="listitem">
               <LockOutlined /> {tr('安全憑證', 'Protected secrets')}
-            </Space>
+            </div>
           </div>
         </div>
         <Typography.Text className="login-footnote">
@@ -61,9 +58,25 @@ export function LoginPage() {
         </Typography.Text>
       </section>
 
-      <section className="login-panel">
-        <div className="login-language">
+      <section className="login-panel" aria-label={tr('控制台登入', 'Console sign-in')}>
+        <div className="login-controls">
           <Button
+            className="login-control"
+            type="text"
+            size="small"
+            icon={colorMode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            aria-label={tr(
+              colorMode === 'dark' ? '切換為淺色模式' : '切換為深色模式',
+              colorMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode',
+            )}
+            title={tr(
+              colorMode === 'dark' ? '淺色模式' : '深色模式',
+              colorMode === 'dark' ? 'Light mode' : 'Dark mode',
+            )}
+            onClick={toggleColorMode}
+          />
+          <Button
+            className="login-control login-language"
             type="text"
             size="small"
             onClick={() => setLocale(locale === 'zh-TW' ? 'en-US' : 'zh-TW')}
@@ -71,10 +84,11 @@ export function LoginPage() {
             {locale === 'zh-TW' ? 'English' : '繁體中文'}
           </Button>
         </div>
-        <Card className="login-card" bordered={false}>
-          <Space direction="vertical" size={24} className="full-width">
+        <Card className="login-card" variant="borderless">
+          <div className="login-card__content">
             {expired ? (
               <Alert
+                className="login-expired-alert"
                 type="warning"
                 showIcon
                 message={tr('登入狀態已過期', 'Your session has expired')}
@@ -84,7 +98,7 @@ export function LoginPage() {
                 )}
               />
             ) : null}
-            <div>
+            <div className="login-card__heading">
               <Typography.Title level={2}>
                 {tr('登入控制台', 'Sign in to the console')}
               </Typography.Title>
@@ -96,6 +110,7 @@ export function LoginPage() {
               </Typography.Paragraph>
             </div>
             <Button
+              className="login-submit"
               type="primary"
               size="large"
               block
@@ -114,7 +129,7 @@ export function LoginPage() {
                 )}
               </Typography.Text>
             </div>
-          </Space>
+          </div>
         </Card>
       </section>
     </main>

@@ -113,6 +113,7 @@ export async function ensureRealm(
   const current = await keycloakRequest(base, path, token);
   const sessionSettings: JsonObject = {
     enabled: true,
+    loginTheme: 'spiderwebrouter',
     registrationAllowed: false,
     loginWithEmailAllowed: true,
     duplicateEmailsAllowed: false,

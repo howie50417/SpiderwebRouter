@@ -83,20 +83,23 @@ export function AppLayout() {
       fixSiderbar
       breakpoint="lg"
       title="SpiderwebRouter"
-      logo={
-        <div className="brand-mark" aria-hidden="true">
-          <RobotOutlined />
-        </div>
-      }
+      logo={<img className="app-brand-logo" src="/logo.png" alt="" aria-hidden="true" />}
       location={{ pathname: location.pathname }}
       route={{ path: '/', routes }}
       menuItemRender={(item, dom) => (item.path ? <Link to={item.path}>{dom}</Link> : dom)}
-      menuHeaderRender={(logo, title) => (
+      headerTitleRender={(logo, title) => (
         <Link to="/" className="brand-link">
           {logo}
           {title}
         </Link>
       )}
+      menuHeaderRender={(_logo, _title, siderProps) =>
+        siderProps ? null : (
+          <Link to="/" className="brand-link" aria-label="SpiderwebRouter">
+            <img className="app-brand-logo" src="/logo.png" alt="" aria-hidden="true" />
+          </Link>
+        )
+      }
       actionsRender={() => [
         <Tooltip key="theme" title={tr('切換明暗主題', 'Toggle color mode')}>
           <Button

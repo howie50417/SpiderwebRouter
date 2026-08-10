@@ -57,6 +57,7 @@ try {
     }
 
     $realm = Get-Content -Raw 'docker/keycloak/realm-export.json' | ConvertFrom-Json
+    Assert-Condition ($realm.loginTheme -eq 'spiderwebrouter') 'SpiderwebRouter Keycloak login theme is not enabled'
     Assert-Condition ($realm.accessTokenLifespan -eq 300) 'Keycloak access token is not five minutes'
     Assert-Condition ($realm.ssoSessionIdleTimeout -eq 604800) 'Keycloak idle session is not seven days'
     Assert-Condition ($realm.ssoSessionMaxLifespan -eq 2592000) 'Keycloak maximum session is not 30 days'
@@ -119,6 +120,13 @@ try {
     $keycloakDockerfile = Get-Content -LiteralPath 'docker/keycloak/Dockerfile' -Raw
     Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_RELATIVE_PATH=/auth') 'Keycloak optimized build is missing KC_HTTP_RELATIVE_PATH=/auth'
     Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_MANAGEMENT_RELATIVE_PATH=/') 'Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/'
+    Assert-Condition $keycloakDockerfile.Contains('COPY docker/keycloak/themes/spiderwebrouter /opt/keycloak/themes/spiderwebrouter') 'Keycloak image omits the SpiderwebRouter login theme'
+    Assert-Condition $keycloakDockerfile.Contains('COPY apps/web/public/logo.png /opt/keycloak/themes/spiderwebrouter/login/resources/img/logo.png') 'Keycloak theme does not consume the canonical logo'
+    Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/theme.properties' -PathType Leaf) 'Keycloak login theme properties are missing'
+    Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css' -PathType Leaf) 'Keycloak login theme stylesheet is missing'
+    Assert-Condition (Test-Path -LiteralPath 'apps/web/public/logo.png' -PathType Leaf) 'canonical logo.png is missing'
+    $keycloakTheme = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/theme.properties' -Raw
+    Assert-Condition $keycloakTheme.Contains('styles=css/styles.css css/spiderwebrouter.css') 'Keycloak custom theme does not load the parent structural stylesheet before its overrides'
 
     $apiDockerfile = Get-Content -LiteralPath 'docker/api/Dockerfile' -Raw
     Assert-Condition (-not $apiDockerfile.Contains('COPY . .')) 'API dependency cache is invalidated by a whole-repository COPY'

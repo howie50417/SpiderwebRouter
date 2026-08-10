@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#e8ecec; font-family:'Noto Sans TC','Helvetica Neue',Helvetica,sans-serif; }
+  a { color:#0f766e; text-decoration:none; }
+  a:hover { color:#0b5a54; }
+</style>
+</helmet>
+
+<section style="padding:72px 80px 120px; display:flex; flex-direction:column; gap:56px">
+  <div style="max-width:820px; display:flex; flex-direction:column; gap:12px">
+    <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.16em; color:#0f766e">TURN 2 · 完整流程兩頁</div>
+    <h1 style="margin:0; font-size:32px; font-weight:900; color:#101614; letter-spacing:-.01em">SpiderwebRouter 登入流程</h1>
+    <p style="margin:0; font-size:15px; line-height:1.75; color:#4a5654">第一頁沿用 1c；第二頁保留你原本的置中版型與欄位，只做視覺優化，讓兩頁的品牌語言一致。</p>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:72px; align-items:flex-start">
+
+    <!-- ============ PAGE 1 · 1c ============ -->
+    <div id="2a" style="display:flex; flex-direction:column; gap:18px">
+      <div style="display:flex; align-items:baseline; gap:14px">
+        <span style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; color:#fff; background:#0f766e; padding:4px 9px; border-radius:5px">2a</span>
+        <span style="font-size:19px; font-weight:700; color:#101614">第一頁 · 控制台登入（1c）</span>
+      </div>
+
+      <div style="width:1440px; height:860px; border-radius:14px; overflow:hidden; box-shadow:0 24px 60px rgba(10,30,28,.22); display:flex; background:#f4f7f6">
+        <div style="width:52%; padding:60px 64px; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between; background:radial-gradient(120% 110% at 20% 30%, #10453e 0%, #072522 48%, #041210 100%)">
+          <div style="display:flex; align-items:center; gap:14px">
+            <div style="width:42px; height:42px; border-radius:12px; background:linear-gradient(150deg,#2fd9b4,#0e8f79); display:flex; align-items:center; justify-content:center">
+              <div style="width:16px; height:16px; border:2px solid rgba(255,255,255,.92); border-radius:5px; transform:rotate(45deg)"></div>
+            </div>
+            <div style="color:#fff; font-size:16px; font-weight:700">SpiderwebRouter</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:34px; max-width:520px">
+            <h2 style="margin:0; font-size:38px; line-height:1.28; font-weight:900; color:#fff; letter-spacing:-.02em">一個介面，<br>管好所有模型來源。</h2>
+            <div style="display:flex; flex-direction:column">
+              <div style="display:flex; gap:16px; padding:18px 0; border-top:1px solid rgba(255,255,255,.10)">
+                <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#4fd6b4; width:26px; padding-top:3px">01</div>
+                <div style="display:flex; flex-direction:column; gap:5px">
+                  <div style="font-size:15px; font-weight:700; color:#eaf5f2">供應商與授權集中管理</div>
+                  <div style="font-size:13.5px; line-height:1.7; color:#8fb0aa">一處設定，所有專案共用同一份模型清單。</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:16px; padding:18px 0; border-top:1px solid rgba(255,255,255,.10)">
+                <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#4fd6b4; width:26px; padding-top:3px">02</div>
+                <div style="display:flex; flex-direction:column; gap:5px">
+                  <div style="font-size:15px; font-weight:700; color:#eaf5f2">價格與用量看得見</div>
+                  <div style="font-size:13.5px; line-height:1.7; color:#8fb0aa">依團隊、金鑰、模型拆分完整用量。</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:16px; padding:18px 0; border-top:1px solid rgba(255,255,255,.10); border-bottom:1px solid rgba(255,255,255,.10)">
+                <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#4fd6b4; width:26px; padding-top:3px">03</div>
+                <div style="display:flex; flex-direction:column; gap:5px">
+                  <div style="font-size:15px; font-weight:700; color:#eaf5f2">OpenAI 相容 API 交付</div>
+                  <div style="font-size:13.5px; line-height:1.7; color:#8fb0aa">既有程式碼換掉 base URL 就能接。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.14em; color:#4c6f69">CHAT COMPLETIONS · RESPONSES · EMBEDDINGS</div>
+        </div>
+
+        <div style="width:48%; position:relative; display:flex; align-items:center; justify-content:center; padding:60px; box-sizing:border-box">
+          <div style="position:absolute; top:34px; right:44px; font-size:13px; font-weight:500; color:#4a5f5c">English</div>
+          <div style="width:100%; max-width:428px; background:#fff; border:1px solid #dfe7e5; border-radius:16px; box-shadow:0 10px 34px rgba(12,40,36,.07); padding:38px 38px 32px; box-sizing:border-box; display:flex; flex-direction:column; gap:26px">
+            <div style="display:flex; gap:11px; padding:13px 15px; border-radius:10px; background:#fdf6e9; border:1px solid #f0dcb4">
+              <div style="width:18px; height:18px; border-radius:50%; background:#c98a16; color:#fff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px">!</div>
+              <div style="font-size:13px; line-height:1.7; color:#7a5510">登入已逾時，請重新登入。完成後會回到<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: rgb(92, 63, 6);">原本的頁面</span>。</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:9px">
+              <h3 style="margin:0; font-size:30px; font-weight:700; color:#0d1917; letter-spacing:-.01em">登入控制台</h3>
+              <p style="margin:0; font-size:14px; line-height:1.8; color:#5c6a68">使用管理員建立的帳號繼續。首次登入需要設定新密碼。</p>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; height:54px; border-radius:10px; background:#0f766e; color:#fff; font-size:16px; font-weight:700">使用單一登入繼續 →</div>
+            <div style="height:1px; background:#e6ecea"></div>
+            <div style="font-size:12.5px; line-height:1.75; color:#7b8886">登入由獨立身分服務處理，控制台不會接觸您的密碼。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ PAGE 2 · 身分服務登入 ============ -->
+    <div id="2b" style="display:flex; flex-direction:column; gap:18px">
+      <div style="display:flex; align-items:baseline; gap:14px">
+        <span style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; color:#fff; background:#0f766e; padding:4px 9px; border-radius:5px">2b</span>
+        <span style="font-size:19px; font-weight:700; color:#101614">第二頁 · 帳號密碼登入（視覺優化）</span>
+        <span style="font-size:14px; color:#5c6a68">版型與欄位不變，換成同一套品牌語言</span>
+      </div>
+
+      <div style="width:1440px; height:860px; border-radius:14px; overflow:hidden; box-shadow:0 24px 60px rgba(10,30,28,.22); position:relative; background:#04100f; display:flex; align-items:center; justify-content:center">
+        <div style="position:absolute; inset:0; background:radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%)"></div>
+        <div style="position:absolute; inset:0; background:repeating-linear-gradient(118deg, rgba(255,255,255,.022) 0 2px, transparent 2px 190px), repeating-linear-gradient(-54deg, rgba(255,255,255,.018) 0 2px, transparent 2px 240px)"></div>
+
+        <div style="position:relative; width:100%; max-width:460px; display:flex; flex-direction:column; align-items:stretch; gap:30px">
+
+          <div style="display:flex; align-items:center; justify-content:center; gap:13px">
+            <div style="width:34px; height:34px; border-radius:10px; background:linear-gradient(150deg,#2fd9b4,#0e8f79); display:flex; align-items:center; justify-content:center">
+              <div style="width:13px; height:13px; border:2px solid rgba(255,255,255,.94); border-radius:4px; transform:rotate(45deg)"></div>
+            </div>
+            <div style="color:#fff; font-size:17px; font-weight:700; letter-spacing:.24em">SPIDERWEBROUTER</div>
+          </div>
+
+          <div style="background:#fff; border-radius:16px; box-shadow:0 22px 60px rgba(0,0,0,.42); overflow:hidden">
+            <div style="height:4px; background:linear-gradient(90deg,#2fd9b4,#0f766e)"></div>
+            <div style="padding:38px 40px 34px; display:flex; flex-direction:column; gap:26px">
+              <h3 style="margin:0; font-size:28px; font-weight:700; color:#0d1917; letter-spacing:-.01em">Sign in to your account</h3>
+
+              <div style="display:flex; flex-direction:column; gap:18px">
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <div style="font-size:13px; font-weight:700; color:#243330">Email</div>
+                  <div style="height:46px; display:flex; align-items:center; padding:0 14px; box-sizing:border-box; border:1px solid #cfdad8; border-radius:9px; font-size:15px; color:#a7b4b2">you@company.com</div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <div style="font-size:13px; font-weight:700; color:#243330">Password</div>
+                  <div style="height:46px; display:flex; align-items:center; justify-content:space-between; padding:0 14px; box-sizing:border-box; border:1px solid #cfdad8; border-radius:9px">
+                    <span style="font-size:15px; color:#a7b4b2">••••••••</span>
+                    <span style="font-size:12.5px; font-weight:500; color:#5c6a68">Show</span>
+                  </div>
+                </div>
+
+                <div style="display:flex; align-items:center; justify-content:space-between">
+                  <div style="display:flex; align-items:center; gap:9px">
+                    <div style="width:16px; height:16px; border:1.5px solid #b9c6c4; border-radius:4px"></div>
+                    <div style="font-size:13.5px; color:#40514e">Remember me</div>
+                  </div>
+                  <div style="font-size:13.5px; font-weight:500; color:#0f766e">Forgot password?</div>
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content:center; height:52px; border-radius:10px; background:#0f766e; color:#fff; font-size:16px; font-weight:700">Sign In</div>
+            </div>
+          </div>
+
+          <div style="text-align:center; font-size:12.5px; line-height:1.75; color:#7b9a95">登入由獨立身分服務處理，控制台不會接觸您的密碼。</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</x-dc>
+</body>
+</html>
