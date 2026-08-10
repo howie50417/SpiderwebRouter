@@ -22,9 +22,7 @@ export function LoginPage() {
         </div>
         <div className="login-hero__content">
           <Typography.Title id="login-hero-title">
-            {tr('一個介面，', 'One interface,')}
-            <br />
-            {tr('管好所有模型來源。', 'every model source under control.')}
+            {tr('一鍵連結所有模型', 'Connect every model in one click')}
           </Typography.Title>
           <div className="login-benefits" role="list">
             <div className="login-benefit" role="listitem">
@@ -32,11 +30,13 @@ export function LoginPage() {
                 01
               </span>
               <div className="login-benefit__copy">
-                <strong>{tr('供應商與授權集中管理', 'Centralized providers and access')}</strong>
+                <strong>
+                  {tr('統一管理多模型資源', 'Unified management for multi-model resources')}
+                </strong>
                 <span>
                   {tr(
-                    '一處設定，所有專案共用同一份模型清單。',
-                    'Configure once and share one model catalog across every project.',
+                    '一站整合所有專案共用模型與權限配置。',
+                    'Manage shared models and access policies for every project in one place.',
                   )}
                 </span>
               </div>
@@ -46,11 +46,11 @@ export function LoginPage() {
                 02
               </span>
               <div className="login-benefit__copy">
-                <strong>{tr('價格與用量看得見', 'Transparent pricing and usage')}</strong>
+                <strong>{tr('用量與費用清楚可見', 'Transparent usage and costs')}</strong>
                 <span>
                   {tr(
-                    '依團隊、金鑰、模型拆分完整用量。',
-                    'Break down complete usage by team, API key, and model.',
+                    '調用次數、Token、成本拆分清晰透明。',
+                    'Calls, tokens, and costs are clearly broken down.',
                   )}
                 </span>
               </div>
@@ -60,11 +60,11 @@ export function LoginPage() {
                 03
               </span>
               <div className="login-benefit__copy">
-                <strong>{tr('OpenAI 相容 API 交付', 'OpenAI-compatible API delivery')}</strong>
+                <strong>{tr('標準 API，無縫整合', 'Standard APIs, seamless integration')}</strong>
                 <span>
                   {tr(
-                    '既有程式碼換掉 base URL 就能接。',
-                    'Connect existing code by changing only the base URL.',
+                    '支援 OpenAI 相容接口，既有程式可快速對接。',
+                    'OpenAI-compatible APIs let existing applications connect quickly.',
                   )}
                 </span>
               </div>

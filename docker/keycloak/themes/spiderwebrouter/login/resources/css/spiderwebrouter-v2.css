@@ -1,3 +1,4 @@
+/* Versioned filename ensures browsers do not reuse a stale Keycloak theme asset. */
 @font-face {
   font-family: 'Noto Sans TC';
   font-style: normal;
@@ -21,6 +22,7 @@
   --swr-teal: #0f766e;
   --swr-teal-hover: #0b5f59;
   --swr-card-radius: 16px;
+  --swr-login-card-width: 35rem;
   color-scheme: light;
 }
 
@@ -71,8 +73,9 @@ html.login-pf body {
 
 .pf-v5-c-login__container {
   display: grid;
-  width: min(100%, 28.75rem);
-  max-width: 28.75rem;
+  width: min(100%, var(--swr-login-card-width));
+  max-width: var(--swr-login-card-width);
+  box-sizing: border-box;
   grid-template-areas:
     'header'
     'main'
@@ -80,6 +83,7 @@ html.login-pf body {
   grid-template-columns: minmax(0, 1fr);
   gap: 1.875rem;
   margin: 0;
+  padding: 0 !important;
 }
 
 .pf-v5-c-login__container::after {
@@ -132,6 +136,8 @@ html:lang(en) .pf-v5-c-login__container::after {
   position: relative;
   grid-area: main;
   min-width: 0;
+  width: 100%;
+  justify-self: stretch;
   overflow: hidden;
   border: 0;
   border-radius: var(--swr-card-radius);
@@ -153,17 +159,17 @@ html:lang(en) .pf-v5-c-login__container::after {
 }
 
 .pf-v5-c-login__main-header,
-.pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
+div.pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) !important;
-  padding: 2.375rem 2.5rem 0;
+  padding: 2.75rem 3rem 0;
   border: 0;
   background: transparent;
 }
 
 .pf-v5-c-login__main-body {
   min-width: 0;
-  padding: 1.625rem 2.5rem 2.125rem;
+  padding: 1.75rem 3rem 2.5rem;
 }
 
 .pf-v5-c-login__main-footer {
@@ -173,19 +179,22 @@ html:lang(en) .pf-v5-c-login__container::after {
 #kc-page-title {
   margin: 0;
   color: var(--swr-ink);
-  font-size: 1.75rem;
+  font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  text-wrap: balance;
+  word-break: normal;
 }
 
 /* Keep the required bilingual control available without changing the 2b card composition. */
 .pf-v5-c-login__main-header-utilities {
-  position: fixed;
+  position: fixed !important;
   z-index: 10;
-  top: 1.75rem;
-  right: 2rem;
+  top: 1.5rem;
+  right: 1.5rem;
+  grid-area: unset !important;
   margin: 0;
 }
 
@@ -198,6 +207,7 @@ html:lang(en) .pf-v5-c-login__container::after {
 }
 
 #login-select-toggle {
+  min-width: 8rem;
   min-height: 2.375rem;
   padding-inline: 0.75rem 2rem;
   background: transparent;
@@ -501,11 +511,14 @@ hr {
 @media (max-width: 600px) {
   .pf-v5-c-login {
     align-items: flex-start;
-    padding: 4.75rem 0.9rem 2rem;
+    padding: 4.75rem 1rem 2rem;
   }
 
   .pf-v5-c-login__container {
+    width: 100%;
+    max-width: var(--swr-login-card-width);
     gap: 1.25rem;
+    padding: 0 !important;
   }
 
   #kc-header-wrapper.pf-v5-c-brand {
@@ -525,16 +538,16 @@ hr {
   }
 
   .pf-v5-c-login__main-header,
-  .pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
-    padding: 2rem 1.35rem 0;
+  div.pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
+    padding: 2rem 1.5rem 0;
   }
 
   .pf-v5-c-login__main-body {
-    padding: 1.35rem 1.35rem 1.65rem;
+    padding: 1.5rem 1.5rem 1.75rem;
   }
 
   #kc-page-title {
-    font-size: clamp(1.45rem, 7vw, 1.75rem);
+    font-size: clamp(1.5rem, 7vw, 1.625rem);
   }
 
   .pf-v5-c-login__main-header-utilities {
@@ -544,6 +557,7 @@ hr {
 
   .pf-v5-c-login__main-header-utilities > .pf-v5-c-form-control,
   #login-select-toggle {
+    min-width: 7.5rem;
     min-height: 2.25rem;
   }
 

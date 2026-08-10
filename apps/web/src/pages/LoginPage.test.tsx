@@ -69,13 +69,14 @@ describe('LoginPage', () => {
   it('renders the three design-spec benefits and keeps only the language control', () => {
     renderLogin('/login');
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      '一個介面，管好所有模型來源。',
-    );
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('一鍵連結所有模型');
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getByText('供應商與授權集中管理')).toBeInTheDocument();
-    expect(screen.getByText('價格與用量看得見')).toBeInTheDocument();
-    expect(screen.getByText('OpenAI 相容 API 交付')).toBeInTheDocument();
+    expect(screen.getByText('統一管理多模型資源')).toBeInTheDocument();
+    expect(screen.getByText('一站整合所有專案共用模型與權限配置。')).toBeInTheDocument();
+    expect(screen.getByText('用量與費用清楚可見')).toBeInTheDocument();
+    expect(screen.getByText('調用次數、Token、成本拆分清晰透明。')).toBeInTheDocument();
+    expect(screen.getByText('標準 API，無縫整合')).toBeInTheDocument();
+    expect(screen.getByText('支援 OpenAI 相容接口，既有程式可快速對接。')).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 

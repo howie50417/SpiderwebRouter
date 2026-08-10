@@ -1,0 +1,67 @@
+/*
+ * Loaded after the parent and brand styles as a cache-busting cascade guard.
+ * PatternFly adds 6.125rem of inline padding to the login container at desktop
+ * widths and Keycloak splits locale-enabled headers into two columns. Both
+ * defaults make the actual form substantially narrower than its declared size.
+ */
+:root {
+  --swr-login-card-width: 35rem;
+}
+
+.pf-v5-c-login__container {
+  width: min(100%, var(--swr-login-card-width)) !important;
+  max-width: var(--swr-login-card-width) !important;
+  box-sizing: border-box;
+  grid-template-areas:
+    'header'
+    'main'
+    'assurance' !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  padding: 0 !important;
+}
+
+.pf-v5-c-login__main {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.pf-v5-c-login__main-header,
+div.pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.pf-v5-c-login__main-header-utilities {
+  position: fixed !important;
+  z-index: 10;
+  top: 1.5rem;
+  right: 1.5rem;
+  grid-area: unset !important;
+  margin: 0;
+}
+
+#login-select-toggle {
+  min-width: 8rem;
+}
+
+#kc-page-title {
+  overflow-wrap: normal;
+  text-wrap: balance;
+  word-break: normal;
+}
+
+@media (max-width: 600px) {
+  .pf-v5-c-login__container {
+    width: 100% !important;
+    max-width: var(--swr-login-card-width) !important;
+    padding: 0 !important;
+  }
+
+  .pf-v5-c-login__main-header-utilities {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+
+  #login-select-toggle {
+    min-width: 7.5rem;
+  }
+}

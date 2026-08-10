@@ -133,17 +133,23 @@ try {
     Assert-Condition $keycloakDockerfile.Contains('COPY apps/web/public/logo.png /opt/keycloak/themes/spiderwebrouter/login/resources/img/logo.png') 'Keycloak theme does not consume the canonical logo'
     Assert-Condition $keycloakDockerfile.Contains('COPY apps/web/public/fonts /opt/keycloak/themes/spiderwebrouter/login/resources/fonts') 'Keycloak theme does not consume the canonical login fonts'
     Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/theme.properties' -PathType Leaf) 'Keycloak login theme properties are missing'
-    Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css' -PathType Leaf) 'Keycloak login theme stylesheet is missing'
+    Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css' -PathType Leaf) 'Keycloak versioned login theme stylesheet is missing'
+    Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css' -PathType Leaf) 'Keycloak login layout cascade guard is missing'
     Assert-Condition (Test-Path -LiteralPath 'apps/web/public/logo.png' -PathType Leaf) 'canonical logo.png is missing'
     Assert-Condition (Test-Path -LiteralPath 'apps/web/public/fonts/NotoSansTC-Variable.woff2' -PathType Leaf) 'Noto Sans TC login font is missing'
     Assert-Condition (Test-Path -LiteralPath 'apps/web/public/fonts/JetBrainsMono-Variable.woff2' -PathType Leaf) 'JetBrains Mono login font is missing'
     $keycloakTheme = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/theme.properties' -Raw
-    Assert-Condition $keycloakTheme.Contains('styles=css/styles.css css/spiderwebrouter.css') 'Keycloak custom theme does not load the parent structural stylesheet before its overrides'
-    $keycloakThemeCss = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css' -Raw
+    Assert-Condition $keycloakTheme.Contains('styles=css/styles.css css/spiderwebrouter-v2.css css/layout-v2.css') 'Keycloak custom theme does not load the structural, cache-busted brand, and layout styles in order'
+    $keycloakThemeCss = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css' -Raw
+    $keycloakLayoutCss = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css' -Raw
     Assert-Condition $keycloakThemeCss.Contains('radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%)') 'Keycloak theme does not use the approved 2b radial background'
     Assert-Condition $keycloakThemeCss.Contains("url('../fonts/NotoSansTC-Variable.woff2')") 'Keycloak theme does not load the approved Noto Sans TC font'
     Assert-Condition $keycloakThemeCss.Contains('repeating-linear-gradient(118deg') 'Keycloak theme is missing the approved 2b line texture'
-    Assert-Condition $keycloakThemeCss.Contains("width: min(100%, 28.75rem)") 'Keycloak login stack is not constrained to the approved 460px width'
+    Assert-Condition $keycloakThemeCss.Contains('--swr-login-card-width: 35rem') 'Keycloak login card is not expanded to the approved 560px width'
+    Assert-Condition $keycloakLayoutCss.Contains('padding: 0 !important') 'Keycloak layout does not neutralize PatternFly desktop container padding'
+    Assert-Condition $keycloakLayoutCss.Contains('position: fixed !important') 'Keycloak locale selector can still consume title width'
+    Assert-Condition $keycloakLayoutCss.Contains('grid-template-columns: minmax(0, 1fr) !important') 'Keycloak locale-enabled header can still split into two columns'
+    Assert-Condition $keycloakLayoutCss.Contains('min-width: 8rem') 'Keycloak desktop locale selector can still truncate its label'
     Assert-Condition $keycloakThemeCss.Contains("background: linear-gradient(90deg, #2fd9b4, #0f766e)") 'Keycloak card is missing the approved teal accent bar'
 
     $apiDockerfile = Get-Content -LiteralPath 'docker/api/Dockerfile' -Raw

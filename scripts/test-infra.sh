@@ -144,22 +144,32 @@ grep -Fq 'COPY apps/web/public/fonts /opt/keycloak/themes/spiderwebrouter/login/
   || fail "Keycloak theme does not consume the canonical login fonts"
 [[ -f docker/keycloak/themes/spiderwebrouter/login/theme.properties ]] \
   || fail "Keycloak login theme properties are missing"
-[[ -f docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css ]] \
-  || fail "Keycloak login theme stylesheet is missing"
+[[ -f docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css ]] \
+  || fail "Keycloak versioned login theme stylesheet is missing"
+[[ -f docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css ]] \
+  || fail "Keycloak login layout cascade guard is missing"
 [[ -f apps/web/public/logo.png ]] || fail "canonical logo.png is missing"
 [[ -f apps/web/public/fonts/NotoSansTC-Variable.woff2 ]] || fail "Noto Sans TC login font is missing"
 [[ -f apps/web/public/fonts/JetBrainsMono-Variable.woff2 ]] || fail "JetBrains Mono login font is missing"
-grep -Fq 'styles=css/styles.css css/spiderwebrouter.css' docker/keycloak/themes/spiderwebrouter/login/theme.properties \
-  || fail "Keycloak custom theme does not load the parent structural stylesheet before its overrides"
-grep -Fq 'radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+grep -Fq 'styles=css/styles.css css/spiderwebrouter-v2.css css/layout-v2.css' docker/keycloak/themes/spiderwebrouter/login/theme.properties \
+  || fail "Keycloak custom theme does not load the structural, cache-busted brand, and layout styles in order"
+grep -Fq 'radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css \
   || fail "Keycloak theme does not use the approved 2b radial background"
-grep -Fq "url('../fonts/NotoSansTC-Variable.woff2')" docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+grep -Fq "url('../fonts/NotoSansTC-Variable.woff2')" docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css \
   || fail "Keycloak theme does not load the approved Noto Sans TC font"
-grep -Fq 'repeating-linear-gradient(118deg' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+grep -Fq 'repeating-linear-gradient(118deg' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css \
   || fail "Keycloak theme is missing the approved 2b line texture"
-grep -Fq 'width: min(100%, 28.75rem)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
-  || fail "Keycloak login stack is not constrained to the approved 460px width"
-grep -Fq 'background: linear-gradient(90deg, #2fd9b4, #0f766e)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+grep -Fq -- '--swr-login-card-width: 35rem' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css \
+  || fail "Keycloak login card is not expanded to the approved 560px width"
+grep -Fq 'padding: 0 !important' docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css \
+  || fail "Keycloak layout does not neutralize PatternFly desktop container padding"
+grep -Fq 'position: fixed !important' docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css \
+  || fail "Keycloak locale selector can still consume title width"
+grep -Fq 'grid-template-columns: minmax(0, 1fr) !important' docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css \
+  || fail "Keycloak locale-enabled header can still split into two columns"
+grep -Fq 'min-width: 8rem' docker/keycloak/themes/spiderwebrouter/login/resources/css/layout-v2.css \
+  || fail "Keycloak desktop locale selector can still truncate its label"
+grep -Fq 'background: linear-gradient(90deg, #2fd9b4, #0f766e)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter-v2.css \
   || fail "Keycloak card is missing the approved teal accent bar"
 
 ! grep -Fq 'COPY . .' docker/api/Dockerfile \
