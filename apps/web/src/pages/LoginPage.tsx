@@ -22,6 +22,8 @@ export function LoginPage() {
         </div>
         <div className="login-hero__content">
           <Typography.Title id="login-hero-title">
+            SpiderwebRouter
+            <br />
             {tr('一鍵連結所有模型', 'Connect every model in one click')}
           </Typography.Title>
           <div className="login-benefits" role="list">
