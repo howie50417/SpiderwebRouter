@@ -1,11 +1,26 @@
+@font-face {
+  font-family: 'Noto Sans TC';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../fonts/NotoSansTC-Variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('../fonts/JetBrainsMono-Variable.woff2') format('woff2');
+}
+
 :root {
-  --swr-ink: #12232b;
-  --swr-muted: #60737c;
-  --swr-line: #d7e3e6;
-  --swr-teal: #0da99b;
-  --swr-teal-dark: #087c76;
-  --swr-blue: #168dda;
-  --swr-card-radius: 22px;
+  --swr-ink: #0d1917;
+  --swr-muted: #5c6a68;
+  --swr-line: #cfdad8;
+  --swr-teal: #0f766e;
+  --swr-teal-hover: #0b5f59;
+  --swr-card-radius: 16px;
   color-scheme: light;
 }
 
@@ -17,53 +32,29 @@ html.login-pf body {
 .login-pf body,
 #keycloak-bg {
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   color: var(--swr-ink);
-  background-color: #05171d;
-  background-image:
-    radial-gradient(circle at 72% 18%, rgba(22, 168, 154, 0.28), transparent 33rem),
-    radial-gradient(circle at 16% 82%, rgba(42, 102, 167, 0.26), transparent 35rem),
-    repeating-linear-gradient(125deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 44px),
-    linear-gradient(145deg, #06141d 0%, #08252b 48%, #05191d 100%);
+  background-color: #030c0b;
+  background-image: radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%);
   background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
   background-size: cover;
   font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'Noto Sans TC',
-    'Microsoft JhengHei',
-    sans-serif;
+    'Noto Sans TC', 'Microsoft JhengHei', 'PingFang TC', 'Helvetica Neue', Arial, sans-serif;
 }
 
-#keycloak-bg::before,
-#keycloak-bg::after {
+/* The line field is the second background layer from the approved 2b mockup. */
+#keycloak-bg::before {
   position: fixed;
   z-index: 0;
-  border: 1px solid rgba(38, 208, 192, 0.13);
-  border-radius: 999px;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(118deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 190px),
+    repeating-linear-gradient(-54deg, rgba(255, 255, 255, 0.018) 0 2px, transparent 2px 240px);
   content: '';
   pointer-events: none;
-}
-
-#keycloak-bg::before {
-  right: -15rem;
-  bottom: -24rem;
-  width: 46rem;
-  height: 46rem;
-  box-shadow:
-    0 0 0 4rem rgba(24, 178, 165, 0.035),
-    0 0 0 9rem rgba(24, 178, 165, 0.025);
-}
-
-#keycloak-bg::after {
-  top: -19rem;
-  left: -14rem;
-  width: 38rem;
-  height: 38rem;
-  box-shadow: 0 0 0 5rem rgba(33, 112, 177, 0.025);
 }
 
 .pf-v5-c-login {
@@ -71,22 +62,37 @@ html.login-pf body {
   z-index: 1;
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   align-items: center;
   justify-content: center;
-  padding: clamp(1.25rem, 4vw, 3.5rem);
+  padding: clamp(1.5rem, 5vh, 3.75rem) 1.5rem;
   background: transparent;
 }
 
 .pf-v5-c-login__container {
   display: grid;
-  width: min(100%, 33rem);
-  max-width: 33rem;
+  width: min(100%, 28.75rem);
+  max-width: 28.75rem;
   grid-template-areas:
     'header'
-    'main';
+    'main'
+    'assurance';
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.35rem;
+  gap: 1.875rem;
   margin: 0;
+}
+
+.pf-v5-c-login__container::after {
+  grid-area: assurance;
+  color: #7b9a95;
+  content: '登入由獨立身分服務處理，控制台不會接觸您的密碼。';
+  font-size: 0.78125rem;
+  line-height: 1.75;
+  text-align: center;
+}
+
+html:lang(en) .pf-v5-c-login__container::after {
+  content: 'Authentication is handled by an independent identity service. The console never sees your password.';
 }
 
 #kc-header {
@@ -101,37 +107,36 @@ html.login-pf body {
   height: auto;
   align-items: center;
   justify-content: center;
-  gap: 0.9rem;
-  color: #f4ffff !important;
-  font-size: clamp(1.3rem, 4vw, 1.65rem);
+  gap: 0.8125rem;
+  color: #ffffff !important;
+  font-size: 1.0625rem;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: 0.24em;
   line-height: 1.2;
-  text-transform: none;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+  text-transform: uppercase;
   white-space: normal;
 }
 
 #kc-header-wrapper::before {
   display: block;
-  width: 3.5rem;
-  height: 3.5rem;
-  flex: 0 0 3.5rem;
+  width: 2.125rem;
+  height: 2.125rem;
+  flex: 0 0 2.125rem;
   background: url('../img/logo.png') center / contain no-repeat;
   content: '';
-  filter: drop-shadow(0 11px 15px rgba(0, 19, 29, 0.34));
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.34));
 }
 
 .pf-v5-c-login__main {
   position: relative;
   grid-area: main;
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(214, 230, 232, 0.78);
+  border: 0;
   border-radius: var(--swr-card-radius);
-  background: rgba(255, 255, 255, 0.985) !important;
-  box-shadow:
-    0 32px 80px rgba(0, 13, 19, 0.42),
-    0 8px 24px rgba(0, 13, 19, 0.18);
+  background: #ffffff !important;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
   color: var(--swr-ink);
 }
 
@@ -141,19 +146,24 @@ html.login-pf body {
   top: 0;
   right: 0;
   left: 0;
-  height: 5px;
-  background: linear-gradient(90deg, #24d2c2 0%, #109fb1 45%, #2685e6 100%);
+  height: 4px;
+  background: linear-gradient(90deg, #2fd9b4, #0f766e);
   content: '';
+  pointer-events: none;
 }
 
-.pf-v5-c-login__main-header {
-  padding: 2.15rem 2.25rem 0.9rem;
+.pf-v5-c-login__main-header,
+.pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
+  padding: 2.375rem 2.5rem 0;
   border: 0;
   background: transparent;
 }
 
 .pf-v5-c-login__main-body {
-  padding: 0.35rem 2.25rem 2.25rem;
+  min-width: 0;
+  padding: 1.625rem 2.5rem 2.125rem;
 }
 
 .pf-v5-c-login__main-footer {
@@ -163,52 +173,239 @@ html.login-pf body {
 #kc-page-title {
   margin: 0;
   color: var(--swr-ink);
-  font-size: clamp(1.7rem, 5vw, 2rem);
-  font-weight: 750;
-  letter-spacing: -0.035em;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the required bilingual control available without changing the 2b card composition. */
+.pf-v5-c-login__main-header-utilities {
+  position: fixed;
+  z-index: 10;
+  top: 1.75rem;
+  right: 2rem;
+  margin: 0;
+}
+
+.pf-v5-c-login__main-header-utilities > .pf-v5-c-form-control {
+  min-height: 2.375rem;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(3, 20, 18, 0.42);
+  box-shadow: none;
+  color: #d8e8e5;
+}
+
+#login-select-toggle {
+  min-height: 2.375rem;
+  padding-inline: 0.75rem 2rem;
+  background: transparent;
+  color: #d8e8e5;
+  cursor: pointer;
+}
+
+#login-select-toggle option {
+  background: #ffffff;
+  color: var(--swr-ink);
+}
+
+.pf-v5-c-login__main-header-utilities .pf-v5-c-form-control__utilities {
+  color: #9ec3bd;
 }
 
 .pf-v5-c-form__group {
-  margin-bottom: 1.15rem;
+  min-width: 0;
+  margin-bottom: 1.125rem;
+}
+
+.pf-v5-c-form__group-label {
+  padding-bottom: 0.5rem;
 }
 
 .pf-v5-c-form__label,
 .pf-v5-c-check__label {
-  color: #263d46;
-  font-size: 0.9rem;
-  font-weight: 650;
+  color: #243330;
+  font-size: 0.8125rem;
+  font-weight: 700;
 }
 
 .pf-v5-c-form-control {
-  min-height: 3rem;
+  min-height: 2.875rem;
   border: 1px solid var(--swr-line);
-  border-radius: 11px;
-  background: #f9fbfc;
-  box-shadow: 0 1px 2px rgba(10, 37, 43, 0.03);
+  border-radius: 9px;
+  background: #ffffff;
+  box-shadow: none;
   color: var(--swr-ink);
+  font-size: 0.9375rem;
   transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background-color 160ms ease;
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > select,
+.pf-v5-c-form-control > textarea {
+  min-width: 0;
+  padding-inline: 0.875rem;
+  color: var(--swr-ink);
+  font: inherit;
 }
 
 .pf-v5-c-form-control:hover {
-  border-color: #9fbfc2;
-  background: #ffffff;
+  border-color: #a9bab7;
 }
 
 .pf-v5-c-form-control:focus,
 .pf-v5-c-form-control:focus-within {
   border-color: var(--swr-teal);
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(13, 169, 155, 0.14);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
   outline: none;
 }
 
+.pf-v5-c-form-control.pf-m-error,
+.pf-v5-c-form-control:has(input[aria-invalid='true']) {
+  border-color: #c64646;
+}
+
 .pf-v5-c-input-group {
+  min-width: 0;
+  min-height: 2.875rem;
   overflow: visible;
-  border-radius: 11px;
+  border-radius: 9px;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control {
+  border-radius: 9px 0 0 9px;
+}
+
+.pf-v5-c-button.pf-m-control {
+  min-width: 3.125rem;
+  border: 1px solid var(--swr-line);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: #ffffff;
+  color: #40514e;
+}
+
+.pf-v5-c-button.pf-m-control:hover,
+.pf-v5-c-button.pf-m-control:focus-visible {
+  background: #f3f8f7;
+  color: var(--swr-teal);
+}
+
+.pf-v5-c-check {
+  align-items: center;
+}
+
+.pf-v5-c-check__input {
+  accent-color: var(--swr-teal);
+}
+
+.pf-v5-c-check__label {
+  color: #40514e;
+  font-size: 0.84375rem;
+  font-weight: 400;
+}
+
+#kc-form-buttons,
+.pf-v5-c-form__actions {
+  margin-top: 1.625rem;
+}
+
+.pf-v5-c-button.pf-m-primary,
+input.pf-v5-c-button.pf-m-primary {
+  min-height: 3.25rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--swr-teal);
+  box-shadow: none;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+.pf-v5-c-button.pf-m-primary:focus-visible,
+input.pf-v5-c-button.pf-m-primary:hover,
+input.pf-v5-c-button.pf-m-primary:focus-visible {
+  background: var(--swr-teal-hover);
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.22);
+  outline: 3px solid rgba(15, 118, 110, 0.18);
+  outline-offset: 2px;
+  transform: translateY(-1px);
+}
+
+.pf-v5-c-button.pf-m-primary:disabled,
+input.pf-v5-c-button.pf-m-primary:disabled {
+  background: #7fa9a4;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.pf-v5-c-button.pf-m-secondary,
+.pf-v5-c-button.pf-m-link {
+  border-radius: 9px;
+  color: var(--swr-teal);
+}
+
+a {
+  color: var(--swr-teal);
+  font-weight: 600;
+  text-underline-offset: 0.2em;
+}
+
+a:hover,
+a:focus-visible {
+  color: var(--swr-teal-hover);
+}
+
+.pf-v5-c-alert {
+  margin-bottom: 1.125rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.pf-v5-c-alert.pf-m-danger {
+  border-color: #f0bcbc;
+  background: #fff3f3;
+  color: #842828;
+}
+
+.pf-v5-c-alert.pf-m-warning {
+  border-color: #f0d6a4;
+  background: #fff8e9;
+  color: #72501d;
+}
+
+.pf-v5-c-alert.pf-m-success {
+  border-color: #b7dfd3;
+  background: #effaf6;
+  color: #176249;
+}
+
+.pf-v5-c-alert.pf-m-info {
+  border-color: #bddce8;
+  background: #f0f8fb;
+  color: #205e76;
+}
+
+.pf-v5-c-helper-text,
+.pf-v5-c-helper-text__item-text,
+.subtitle,
+.instruction {
+  color: var(--swr-muted);
+}
+
+.kc-feedback-text.pf-m-error,
+.pf-v5-c-helper-text__item-text.pf-m-error {
+  color: #b4232a;
 }
 
 .kc-login-tooltip {
@@ -242,122 +439,39 @@ html.login-pf body {
   opacity: 1;
 }
 
-.pf-v5-c-input-group .pf-v5-c-form-control {
-  border-radius: 11px 0 0 11px;
+#kc-username {
+  margin-bottom: 1.125rem;
 }
 
-.pf-v5-c-button.pf-m-control {
-  min-width: 3rem;
-  border: 1px solid var(--swr-line);
-  border-left: 0;
-  border-radius: 0 11px 11px 0;
-  background: #f9fbfc;
-  color: #38525c;
+#kc-attempted-username {
+  overflow-wrap: anywhere;
 }
 
-.pf-v5-c-button.pf-m-control:hover,
-.pf-v5-c-button.pf-m-control:focus-visible {
-  background: #eef8f8;
-  color: var(--swr-teal-dark);
-}
-
-.pf-v5-c-button.pf-m-primary,
-input.pf-v5-c-button.pf-m-primary {
-  min-height: 3rem;
-  border: 0;
-  border-radius: 11px;
-  background: linear-gradient(105deg, var(--swr-teal) 0%, #119fa8 52%, var(--swr-blue) 100%);
-  box-shadow: 0 8px 20px rgba(13, 145, 137, 0.2);
-  color: #ffffff;
-  font-weight: 700;
-  transition:
-    transform 150ms ease,
-    box-shadow 150ms ease,
-    filter 150ms ease;
-}
-
-.pf-v5-c-button.pf-m-primary:hover,
-.pf-v5-c-button.pf-m-primary:focus-visible,
-input.pf-v5-c-button.pf-m-primary:hover,
-input.pf-v5-c-button.pf-m-primary:focus-visible {
-  background: linear-gradient(105deg, #0eb9a9 0%, #119fa8 52%, #1a93ed 100%);
-  box-shadow: 0 11px 24px rgba(13, 145, 137, 0.28);
-  filter: saturate(1.06);
-  outline: 3px solid rgba(13, 169, 155, 0.18);
-  outline-offset: 2px;
-  transform: translateY(-1px);
-}
-
-.pf-v5-c-button.pf-m-secondary,
-.pf-v5-c-button.pf-m-link {
-  border-radius: 10px;
-  color: var(--swr-teal-dark);
-}
-
-a {
-  color: var(--swr-teal-dark);
-  font-weight: 600;
-  text-underline-offset: 0.2em;
-}
-
-a:hover,
-a:focus-visible {
-  color: #075f5c;
-}
-
-.pf-v5-c-check__input {
-  accent-color: var(--swr-teal);
-}
-
-.pf-v5-c-alert {
-  border: 1px solid transparent;
-  border-radius: 12px;
-  box-shadow: none;
-}
-
-.pf-v5-c-alert.pf-m-danger {
-  border-color: #f3c3c3;
-  background: #fff3f3;
-  color: #842828;
-}
-
-.pf-v5-c-alert.pf-m-warning {
-  border-color: #f0d6a4;
-  background: #fff8e9;
-  color: #72501d;
-}
-
-.pf-v5-c-alert.pf-m-success {
-  border-color: #b7dfd3;
-  background: #effaf6;
-  color: #176249;
-}
-
-.pf-v5-c-helper-text,
-.pf-v5-c-helper-text__item-text,
-.subtitle {
+#kc-info,
+.pf-v5-c-login__main-footer-band {
+  margin-top: 1.25rem;
+  padding: 1rem 0 0;
+  border-top: 1px solid #e6ecea;
   color: var(--swr-muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
 }
 
-.kc-feedback-text.pf-m-error,
-.pf-v5-c-helper-text__item-text.pf-m-error {
-  color: #b4232a;
+#kc-social-providers {
+  margin-top: 1.25rem;
 }
 
-#kc-form-options,
-.pf-v5-c-form__group:has(#rememberMe) {
-  color: var(--swr-muted);
-}
-
-#login-select-toggle {
-  min-height: 2.5rem;
-  background: #ffffff;
+#kc-social-providers svg {
+  height: 1.25rem;
 }
 
 #kc-recovery-codes-list,
 #kc-code,
-.pf-v5-c-panel {
-  border-radius: 12px;
+.pf-v5-c-panel,
+.select-auth-container,
+.pf-v5-c-tile {
+  max-width: 100%;
+  border-radius: 10px;
 }
 
 #kc-recovery-codes-list {
@@ -365,16 +479,14 @@ a:focus-visible {
 }
 
 #certificate_subjectDN,
-#kc-code pre code {
+#kc-code pre code,
+#kc-error-message,
+.pf-v5-c-alert__title {
   overflow-wrap: anywhere;
 }
 
 #kc-verify-email-form {
   margin-block: 1.5rem;
-}
-
-#kc-social-providers svg {
-  height: 1.25rem;
 }
 
 #kc-form-webauthn {
@@ -383,48 +495,71 @@ a:focus-visible {
 
 hr {
   margin-block: 0.75rem 1rem;
-  border-color: var(--swr-line);
+  border-color: #e6ecea;
 }
 
-@media (max-width: 540px) {
+@media (max-width: 600px) {
   .pf-v5-c-login {
     align-items: flex-start;
-    padding: 1.25rem 0.9rem 2rem;
+    padding: 4.75rem 0.9rem 2rem;
   }
 
   .pf-v5-c-login__container {
-    gap: 1rem;
+    gap: 1.25rem;
   }
 
   #kc-header-wrapper.pf-v5-c-brand {
-    gap: 0.7rem;
-    font-size: 1.25rem;
+    gap: 0.65rem;
+    font-size: clamp(0.82rem, 4.4vw, 1rem);
+    letter-spacing: 0.16em;
   }
 
   #kc-header-wrapper::before {
-    width: 2.8rem;
-    height: 2.8rem;
-    flex-basis: 2.8rem;
+    width: 2rem;
+    height: 2rem;
+    flex-basis: 2rem;
   }
 
   .pf-v5-c-login__main {
-    border-radius: 17px;
+    border-radius: 14px;
   }
 
-  .pf-v5-c-login__main-header {
-    padding: 1.8rem 1.35rem 0.8rem;
+  .pf-v5-c-login__main-header,
+  .pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
+    padding: 2rem 1.35rem 0;
   }
 
   .pf-v5-c-login__main-body {
-    padding: 0.25rem 1.35rem 1.6rem;
+    padding: 1.35rem 1.35rem 1.65rem;
+  }
+
+  #kc-page-title {
+    font-size: clamp(1.45rem, 7vw, 1.75rem);
+  }
+
+  .pf-v5-c-login__main-header-utilities {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .pf-v5-c-login__main-header-utilities > .pf-v5-c-form-control,
+  #login-select-toggle {
+    min-height: 2.25rem;
+  }
+
+  #kc-recovery-codes-list {
+    columns: 1;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 601px) {
+  .pf-v5-c-login {
+    align-items: flex-start;
+    padding-block: 2rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
   .pf-v5-c-form-control,
   .pf-v5-c-button,
   .kc-login-tooltip .kc-tooltip-text {

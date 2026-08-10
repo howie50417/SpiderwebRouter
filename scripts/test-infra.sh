@@ -140,13 +140,27 @@ grep -Fq 'COPY docker/keycloak/themes/spiderwebrouter /opt/keycloak/themes/spide
   || fail "Keycloak image omits the SpiderwebRouter login theme"
 grep -Fq 'COPY apps/web/public/logo.png /opt/keycloak/themes/spiderwebrouter/login/resources/img/logo.png' docker/keycloak/Dockerfile \
   || fail "Keycloak theme does not consume the canonical logo"
+grep -Fq 'COPY apps/web/public/fonts /opt/keycloak/themes/spiderwebrouter/login/resources/fonts' docker/keycloak/Dockerfile \
+  || fail "Keycloak theme does not consume the canonical login fonts"
 [[ -f docker/keycloak/themes/spiderwebrouter/login/theme.properties ]] \
   || fail "Keycloak login theme properties are missing"
 [[ -f docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css ]] \
   || fail "Keycloak login theme stylesheet is missing"
 [[ -f apps/web/public/logo.png ]] || fail "canonical logo.png is missing"
+[[ -f apps/web/public/fonts/NotoSansTC-Variable.woff2 ]] || fail "Noto Sans TC login font is missing"
+[[ -f apps/web/public/fonts/JetBrainsMono-Variable.woff2 ]] || fail "JetBrains Mono login font is missing"
 grep -Fq 'styles=css/styles.css css/spiderwebrouter.css' docker/keycloak/themes/spiderwebrouter/login/theme.properties \
   || fail "Keycloak custom theme does not load the parent structural stylesheet before its overrides"
+grep -Fq 'radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+  || fail "Keycloak theme does not use the approved 2b radial background"
+grep -Fq "url('../fonts/NotoSansTC-Variable.woff2')" docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+  || fail "Keycloak theme does not load the approved Noto Sans TC font"
+grep -Fq 'repeating-linear-gradient(118deg' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+  || fail "Keycloak theme is missing the approved 2b line texture"
+grep -Fq 'width: min(100%, 28.75rem)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+  || fail "Keycloak login stack is not constrained to the approved 460px width"
+grep -Fq 'background: linear-gradient(90deg, #2fd9b4, #0f766e)' docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css \
+  || fail "Keycloak card is missing the approved teal accent bar"
 
 ! grep -Fq 'COPY . .' docker/api/Dockerfile \
   || fail "API dependency cache is invalidated by a whole-repository COPY"

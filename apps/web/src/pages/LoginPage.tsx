@@ -1,11 +1,4 @@
-import {
-  ApiOutlined,
-  ArrowRightOutlined,
-  LockOutlined,
-  MoonOutlined,
-  SafetyCertificateOutlined,
-  SunOutlined,
-} from '@ant-design/icons';
+import { ArrowRightOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Typography } from 'antd';
 import { useLocation } from 'react-router-dom';
 
@@ -15,7 +8,7 @@ import { useAppSettings } from '@/context/AppSettings';
 
 export function LoginPage() {
   const location = useLocation();
-  const { colorMode, locale, setLocale, toggleColorMode, tr } = useAppSettings();
+  const { locale, setLocale, tr } = useAppSettings();
   const params = new URLSearchParams(location.search);
   const returnTo = sanitizeReturnTo(params.get('returnTo'));
   const expired = params.get('reason') === 'expired';
@@ -28,28 +21,53 @@ export function LoginPage() {
           <Typography.Text>SpiderwebRouter</Typography.Text>
         </div>
         <div className="login-hero__content">
-          <div className="login-eyebrow">MODEL GATEWAY CONSOLE</div>
           <Typography.Title id="login-hero-title">
-            {tr(
-              '把每個模型來源，變成一個可靠的介面。',
-              'One reliable interface for every model source.',
-            )}
+            {tr('一個介面，', 'One interface,')}
+            <br />
+            {tr('管好所有模型來源。', 'every model source under control.')}
           </Typography.Title>
-          <Typography.Paragraph>
-            {tr(
-              '集中管理供應商、模型授權、價格與完整用量，並以 OpenAI 相容 API 安全交付。',
-              'Manage providers, model access, pricing, and usage from one secure OpenAI-compatible gateway.',
-            )}
-          </Typography.Paragraph>
-          <div className="login-feature-grid" role="list">
-            <div className="login-feature" role="listitem">
-              <ApiOutlined /> OpenAI-compatible
+          <div className="login-benefits" role="list">
+            <div className="login-benefit" role="listitem">
+              <span className="login-benefit__number" aria-hidden="true">
+                01
+              </span>
+              <div className="login-benefit__copy">
+                <strong>{tr('供應商與授權集中管理', 'Centralized providers and access')}</strong>
+                <span>
+                  {tr(
+                    '一處設定，所有專案共用同一份模型清單。',
+                    'Configure once and share one model catalog across every project.',
+                  )}
+                </span>
+              </div>
             </div>
-            <div className="login-feature" role="listitem">
-              <SafetyCertificateOutlined /> {tr('權限隔離', 'Access isolation')}
+            <div className="login-benefit" role="listitem">
+              <span className="login-benefit__number" aria-hidden="true">
+                02
+              </span>
+              <div className="login-benefit__copy">
+                <strong>{tr('價格與用量看得見', 'Transparent pricing and usage')}</strong>
+                <span>
+                  {tr(
+                    '依團隊、金鑰、模型拆分完整用量。',
+                    'Break down complete usage by team, API key, and model.',
+                  )}
+                </span>
+              </div>
             </div>
-            <div className="login-feature" role="listitem">
-              <LockOutlined /> {tr('安全憑證', 'Protected secrets')}
+            <div className="login-benefit" role="listitem">
+              <span className="login-benefit__number" aria-hidden="true">
+                03
+              </span>
+              <div className="login-benefit__copy">
+                <strong>{tr('OpenAI 相容 API 交付', 'OpenAI-compatible API delivery')}</strong>
+                <span>
+                  {tr(
+                    '既有程式碼換掉 base URL 就能接。',
+                    'Connect existing code by changing only the base URL.',
+                  )}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -61,27 +79,14 @@ export function LoginPage() {
       <section className="login-panel" aria-label={tr('控制台登入', 'Console sign-in')}>
         <div className="login-controls">
           <Button
-            className="login-control"
-            type="text"
-            size="small"
-            icon={colorMode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-            aria-label={tr(
-              colorMode === 'dark' ? '切換為淺色模式' : '切換為深色模式',
-              colorMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode',
-            )}
-            title={tr(
-              colorMode === 'dark' ? '淺色模式' : '深色模式',
-              colorMode === 'dark' ? 'Light mode' : 'Dark mode',
-            )}
-            onClick={toggleColorMode}
-          />
-          <Button
             className="login-control login-language"
             type="text"
             size="small"
+            aria-label={tr('切換語言，目前為中文', 'Switch language, currently English')}
+            title={tr('切換至英文', 'Switch to Traditional Chinese')}
             onClick={() => setLocale(locale === 'zh-TW' ? 'en-US' : 'zh-TW')}
           >
-            {locale === 'zh-TW' ? 'English' : '繁體中文'}
+            {locale === 'zh-TW' ? '中文' : 'English'}
           </Button>
         </div>
         <Card className="login-card" variant="borderless">
@@ -91,10 +96,9 @@ export function LoginPage() {
                 className="login-expired-alert"
                 type="warning"
                 showIcon
-                message={tr('登入狀態已過期', 'Your session has expired')}
-                description={tr(
-                  '請重新登入，完成後會回到原本的頁面。',
-                  'Sign in again and you will return to the page you were viewing.',
+                message={tr(
+                  '登入已逾時，請重新登入。完成後會回到原本的頁面。',
+                  'Your session has expired. Sign in again and you will return to the page you were viewing.',
                 )}
               />
             ) : null}
@@ -102,7 +106,7 @@ export function LoginPage() {
               <Typography.Title level={2}>
                 {tr('登入控制台', 'Sign in to the console')}
               </Typography.Title>
-              <Typography.Paragraph type="secondary">
+              <Typography.Paragraph className="login-card__description" type="secondary">
                 {tr(
                   '使用管理員建立的帳號繼續。首次登入時需要設定新密碼。',
                   'Continue with an administrator-provisioned account. You will set a new password on first sign-in.',
@@ -121,7 +125,6 @@ export function LoginPage() {
               {tr('使用單一登入繼續', 'Continue with single sign-on')}
             </Button>
             <div className="login-security-note">
-              <SafetyCertificateOutlined />
               <Typography.Text type="secondary">
                 {tr(
                   '登入由獨立身分服務安全處理；控制台不會接觸您的密碼。',

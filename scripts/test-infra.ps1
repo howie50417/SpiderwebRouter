@@ -131,11 +131,20 @@ try {
     Assert-Condition $keycloakDockerfile.Contains('KC_HTTP_MANAGEMENT_RELATIVE_PATH=/') 'Keycloak optimized build is missing KC_HTTP_MANAGEMENT_RELATIVE_PATH=/'
     Assert-Condition $keycloakDockerfile.Contains('COPY docker/keycloak/themes/spiderwebrouter /opt/keycloak/themes/spiderwebrouter') 'Keycloak image omits the SpiderwebRouter login theme'
     Assert-Condition $keycloakDockerfile.Contains('COPY apps/web/public/logo.png /opt/keycloak/themes/spiderwebrouter/login/resources/img/logo.png') 'Keycloak theme does not consume the canonical logo'
+    Assert-Condition $keycloakDockerfile.Contains('COPY apps/web/public/fonts /opt/keycloak/themes/spiderwebrouter/login/resources/fonts') 'Keycloak theme does not consume the canonical login fonts'
     Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/theme.properties' -PathType Leaf) 'Keycloak login theme properties are missing'
     Assert-Condition (Test-Path -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css' -PathType Leaf) 'Keycloak login theme stylesheet is missing'
     Assert-Condition (Test-Path -LiteralPath 'apps/web/public/logo.png' -PathType Leaf) 'canonical logo.png is missing'
+    Assert-Condition (Test-Path -LiteralPath 'apps/web/public/fonts/NotoSansTC-Variable.woff2' -PathType Leaf) 'Noto Sans TC login font is missing'
+    Assert-Condition (Test-Path -LiteralPath 'apps/web/public/fonts/JetBrainsMono-Variable.woff2' -PathType Leaf) 'JetBrains Mono login font is missing'
     $keycloakTheme = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/theme.properties' -Raw
     Assert-Condition $keycloakTheme.Contains('styles=css/styles.css css/spiderwebrouter.css') 'Keycloak custom theme does not load the parent structural stylesheet before its overrides'
+    $keycloakThemeCss = Get-Content -LiteralPath 'docker/keycloak/themes/spiderwebrouter/login/resources/css/spiderwebrouter.css' -Raw
+    Assert-Condition $keycloakThemeCss.Contains('radial-gradient(80% 60% at 50% 12%, #0d3a35 0%, #071e1c 45%, #030c0b 100%)') 'Keycloak theme does not use the approved 2b radial background'
+    Assert-Condition $keycloakThemeCss.Contains("url('../fonts/NotoSansTC-Variable.woff2')") 'Keycloak theme does not load the approved Noto Sans TC font'
+    Assert-Condition $keycloakThemeCss.Contains('repeating-linear-gradient(118deg') 'Keycloak theme is missing the approved 2b line texture'
+    Assert-Condition $keycloakThemeCss.Contains("width: min(100%, 28.75rem)") 'Keycloak login stack is not constrained to the approved 460px width'
+    Assert-Condition $keycloakThemeCss.Contains("background: linear-gradient(90deg, #2fd9b4, #0f766e)") 'Keycloak card is missing the approved teal accent bar'
 
     $apiDockerfile = Get-Content -LiteralPath 'docker/api/Dockerfile' -Raw
     Assert-Condition (-not $apiDockerfile.Contains('COPY . .')) 'API dependency cache is invalidated by a whole-repository COPY'
