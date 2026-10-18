@@ -315,7 +315,6 @@ docker compose exec -T postgres pg_dump -U spiderwebrouter -d keycloak > keycloa
 
 ## 安全注意事項
 
-- 使用者先前曾貼出的 Open WebUI key 已視為洩漏，工作區中的 `ai.txt` 已刪除。部署前仍必須在 Open WebUI 來源端**撤銷並輪替**，並清查 shell history、聊天紀錄、ticket、log 或備份；本專案不會使用或 seed 該 key。
 - 不要把 `.env`、`secrets/`、客戶 API key、Provider token、SQL dump 或完整容器日誌提交到 Git。
 - Provider base URL 原則上必須為 HTTPS。明確列在 `ALLOWED_HTTP_PROVIDER_HOSTS` 的 Compose DNS hostname 才能使用 HTTP；localhost、link-local、cloud metadata IP 與跨 host redirect 仍會被阻擋。
 - 只信任真正的 TLS proxy CIDR。過寬的 `TRUSTED_PROXY_CIDRS` 可能讓攻擊者偽造 client IP 或 scheme。

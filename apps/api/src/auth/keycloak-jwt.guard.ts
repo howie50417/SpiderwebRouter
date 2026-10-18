@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import type { JWTVerifyResult, JWTPayload } from 'jose';
 import { PrismaService } from '../database/prisma.service';
@@ -46,23 +47,29 @@ export class KeycloakJwtGuard implements CanActivate {
         : tokenRoles.includes('ADMIN') || tokenRoles.includes('admin')
           ? 'ADMIN'
           : 'USER';
-    let user = await this.prisma.user.findFirst({
-      where: { OR: [{ keycloakSubject: claims.sub }, { email: claims.email.toLowerCase() }] },
+    // Email is mutable and must never link a token to another subject's account.
+    let user = await this.prisma.user.findUnique({
+      where: { keycloakSubject: claims.sub },
     });
     if (!user) {
-      user = await this.prisma.user.create({
-        data: {
-          keycloakSubject: claims.sub,
-          email: claims.email.toLowerCase(),
-          displayName: typeof claims.name === 'string' ? claims.name : undefined,
-          role: requestedRole,
-        },
-      });
-    } else if (!user.keycloakSubject || user.keycloakSubject.startsWith('bootstrap:')) {
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { keycloakSubject: claims.sub },
-      });
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            keycloakSubject: claims.sub,
+            email: claims.email.toLowerCase(),
+            displayName: typeof claims.name === 'string' ? claims.name : undefined,
+            role: requestedRole,
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+          throw error;
+        }
+        // Concurrent first logins may create this subject while we wait. An email
+        // collision with any other account must fail without changing its binding.
+        user = await this.prisma.user.findUnique({ where: { keycloakSubject: claims.sub } });
+        if (!user) throw new AppError('authentication_error', 401);
+      }
     }
     if (!user.active) throw new AppError('permission_denied', 403);
     request.principal = {
