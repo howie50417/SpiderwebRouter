@@ -323,3 +323,13 @@ docker compose exec -T postgres pg_dump -U spiderwebrouter -d keycloak > keycloa
 - 初始超管預設不要求 TOTP 是產品設定，不代表建議長期停用；正式環境可在首次登入後自行啟用。
 
 相關文件：[Docker Compose](https://docs.docker.com/compose/)、[Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)、[Keycloak container](https://www.keycloak.org/server/containers)、[OpenAI Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)、[Codex custom model providers](https://learn.chatgpt.com/docs/config-file/config-advanced#custom-model-providers)。
+
+## 授權
+
+SpiderwebRouter 採用 [MIT License](LICENSE)，允許公司與個人商用、內部部署、修改及散布；散布時須保留版權與授權聲明。軟體依授權條款按現狀提供。
+
+第三方依賴與附帶字型沿用各自的授權；字型聲明位於 [`apps/web/public/fonts/`](apps/web/public/fonts/)。模型權重與上游 API 服務的使用仍依其各自授權及服務條款。
+
+## 參與維護
+
+歡迎其他公司依 MIT 授權採用 SpiderwebRouter，也歡迎開發者透過 Issue 與 Pull Request 共同維護、擴充模型來源與功能、改善文件與測試，或提升系統安全性。
